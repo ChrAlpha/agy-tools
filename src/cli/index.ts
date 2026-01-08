@@ -3,6 +3,7 @@ import { startCommand } from "./commands/start.js";
 import { loginCommand } from "./commands/login.js";
 import { accountsCommand } from "./commands/accounts.js";
 import { configCommand } from "./commands/config.js";
+import { modelsCommand } from "./commands/models.js";
 import { setLogLevel } from "../shared/logger.js";
 
 const cli = cac("agy-tools");
@@ -50,6 +51,10 @@ cli
 cli
   .command("config reset", "Reset configuration to defaults")
   .action(configCommand.reset);
+
+cli
+  .command("models", "List all available models")
+  .action(modelsCommand);
 
 // Help and version
 cli.help();

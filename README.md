@@ -123,6 +123,13 @@ agy-tools config set <key> <value>
 agy-tools config reset
 ```
 
+### 模型
+
+```bash
+# 列出所有可用模型
+agy-tools models
+```
+
 ## 配置文件
 
 配置文件存储在 `~/.agy-tools/` 目录：
