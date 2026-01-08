@@ -1,0 +1,52 @@
+{
+  "name": "agy-tools",
+  "version": "0.1.0",
+  "description": "Antigravity API reverse proxy with multi-account management",
+  "type": "module",
+  "bin": {
+    "agy-tools": "./dist/bin/agy.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/bin/agy.ts",
+    "build": "tsup",
+    "start": "node dist/bin/agy.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist"
+  },
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "antigravity",
+    "gemini",
+    "claude",
+    "openai",
+    "proxy",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^1.19.7",
+    "cac": "^6.7.14",
+    "chalk": "^5.3.0",
+    "dotenv": "^17.2.3",
+    "hono": "^4.6.0",
+    "open": "^10.1.0",
+    "ora": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.0.16",
+    "eslint": "^9.0.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.16"
+  }
+}
