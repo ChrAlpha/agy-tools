@@ -250,11 +250,28 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
 
     const sanitized = { ...schema };
 
+    // Remove OpenAI/Anthropic-specific JSON Schema fields that Gemini doesn't support
     delete sanitized["$schema"];
     delete sanitized["default"];
     delete sanitized["examples"];
     delete sanitized["$id"];
     delete sanitized["$comment"];
+    delete sanitized["exclusiveMinimum"];
+    delete sanitized["exclusiveMaximum"];
+    delete sanitized["const"];
+    delete sanitized["contentMediaType"];
+    delete sanitized["contentEncoding"];
+    delete sanitized["if"];
+    delete sanitized["then"];
+    delete sanitized["else"];
+    delete sanitized["allOf"];
+    delete sanitized["anyOf"];
+    delete sanitized["oneOf"];
+    delete sanitized["not"];
+    delete sanitized["dependentSchemas"];
+    delete sanitized["dependentRequired"];
+    delete sanitized["$defs"];
+    delete sanitized["definitions"];
 
     if (sanitized.properties && typeof sanitized.properties === "object") {
       const props = sanitized.properties as Record<string, Record<string, unknown>>;
