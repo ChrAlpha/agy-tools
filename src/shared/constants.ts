@@ -75,6 +75,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "claude-sonnet-4-5-thinking",
     name: "Claude Sonnet 4.5 (Thinking)",
+    baseModel: "claude-sonnet-4-5-thinking",
     family: "claude",
     contextWindow: 200000,
     maxOutputTokens: 65536,
@@ -85,6 +86,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "claude-sonnet-4-5-thinking-high",
     name: "Claude Sonnet 4.5 (High Thinking)",
+    baseModel: "claude-sonnet-4-5-thinking",
     family: "claude",
     contextWindow: 200000,
     maxOutputTokens: 65536,
@@ -95,6 +97,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "claude-sonnet-4-5-thinking-low",
     name: "Claude Sonnet 4.5 (Low Thinking)",
+    baseModel: "claude-sonnet-4-5-thinking",
     family: "claude",
     contextWindow: 200000,
     maxOutputTokens: 65536,
@@ -105,6 +108,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "claude-sonnet-4-5",
     name: "Claude Sonnet 4.5",
+    baseModel: "claude-sonnet-4-5",
     family: "claude",
     contextWindow: 200000,
     maxOutputTokens: 8192,
@@ -116,6 +120,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "claude-opus-4-5-thinking",
     name: "Claude Opus 4.5 (Thinking)",
+    baseModel: "claude-opus-4-5-thinking",
     family: "claude",
     contextWindow: 200000,
     maxOutputTokens: 65536,
@@ -126,6 +131,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "claude-opus-4-5-thinking-high",
     name: "Claude Opus 4.5 (High Thinking)",
+    baseModel: "claude-opus-4-5-thinking",
     family: "claude",
     contextWindow: 200000,
     maxOutputTokens: 65536,
@@ -136,6 +142,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "claude-opus-4-5-thinking-low",
     name: "Claude Opus 4.5 (Low Thinking)",
+    baseModel: "claude-opus-4-5-thinking",
     family: "claude",
     contextWindow: 200000,
     maxOutputTokens: 65536,
@@ -149,6 +156,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "gemini-2.5-pro",
     name: "Gemini 2.5 Pro",
+    baseModel: "gemini-2.5-pro",
     family: "gemini",
     contextWindow: 1048576,
     maxOutputTokens: 65536,
@@ -157,6 +165,25 @@ export const MODELS: ModelInfo[] = [
   {
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
+    baseModel: "gemini-2.5-flash",
+    family: "gemini",
+    contextWindow: 1048576,
+    maxOutputTokens: 65536,
+    supportsStreaming: true,
+  },
+  {
+    id: "gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash Lite",
+    baseModel: "gemini-2.5-flash-lite",
+    family: "gemini",
+    contextWindow: 1048576,
+    maxOutputTokens: 65536,
+    supportsStreaming: true,
+  },
+  {
+    id: "gemini-2.5-flash-thinking",
+    name: "Gemini 2.5 Flash Thinking",
+    baseModel: "gemini-2.5-flash-thinking",
     family: "gemini",
     contextWindow: 1048576,
     maxOutputTokens: 65536,
@@ -168,7 +195,35 @@ export const MODELS: ModelInfo[] = [
   {
     id: "gemini-3-pro",
     name: "Gemini 3 Pro",
+    baseModel: "gemini-3-pro",
     family: "gemini",
+    contextWindow: 1048576,
+    maxOutputTokens: 65536,
+    supportsStreaming: true,
+  },
+  {
+    id: "gemini-3-pro-low",
+    name: "Gemini 3 Pro Low",
+    baseModel: "gemini-3-pro-low",
+    family: "gemini",
+    contextWindow: 1048576,
+    maxOutputTokens: 65536,
+    supportsStreaming: true,
+  },
+  {
+    id: 'gemini-3-pro-high',
+    name: 'Gemini 3 Pro High',
+    baseModel: 'gemini-3-pro-high',
+    family: 'gemini',
+    contextWindow: 1048576,
+    maxOutputTokens: 65536,
+    supportsStreaming: true,
+  },
+  {
+    id: 'gemini-3-pro-preview',
+    name: 'Gemini 3 Pro Preview',
+    baseModel: 'gemini-3-pro-preview',
+    family: 'gemini',
     contextWindow: 1048576,
     maxOutputTokens: 65536,
     supportsStreaming: true,
@@ -176,6 +231,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: "gemini-3-flash",
     name: "Gemini 3 Flash",
+    baseModel: "gemini-3-flash",
     family: "gemini",
     contextWindow: 1048576,
     maxOutputTokens: 65536,
@@ -208,6 +264,15 @@ export function resolveModelId(modelId: string): string {
 export function getModelInfo(modelId: string): ModelInfo | undefined {
   const resolved = resolveModelId(modelId);
   return MODELS.find((m) => m.id === resolved);
+}
+
+/**
+ * Get the base model ID for API calls
+ */
+export function getBaseModelId(modelId: string): string {
+  const resolved = resolveModelId(modelId);
+  const model = getModelInfo(resolved);
+  return model?.baseModel ?? resolved;
 }
 
 /**
@@ -256,7 +321,7 @@ export function parseModelWithTier(modelId: string): {
     else if (model.thinkingBudget === THINKING_BUDGETS.low) level = "low";
 
     return {
-      baseModel: resolved,
+      baseModel: model.baseModel,
       thinkingLevel: level,
       thinkingBudget: model.thinkingBudget,
     };
@@ -264,7 +329,7 @@ export function parseModelWithTier(modelId: string): {
 
   // No thinking support
   return {
-    baseModel: resolved,
+    baseModel: model?.baseModel ?? resolved,
     thinkingLevel: "none",
   };
 }

@@ -57,6 +57,7 @@ export type ModelFamily = "claude" | "gemini";
 export interface ModelInfo {
   id: string;
   name: string;
+  baseModel: string; // The actual model ID used for API calls
   family: ModelFamily;
   contextWindow: number;
   maxOutputTokens: number;
