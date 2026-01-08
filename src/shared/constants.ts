@@ -275,7 +275,7 @@ export function parseModelWithTier(modelId: string): {
 
 export const DEFAULT_SERVER_CONFIG = {
   host: "127.0.0.1",
-  port: 8080,
+  port: 38080,
 };
 
 export const DEFAULT_PROXY_CONFIG = {

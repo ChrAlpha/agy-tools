@@ -36,14 +36,14 @@ agy-tools login
 agy-tools start
 ```
 
-默认监听 `http://127.0.0.1:8080`。
+默认监听 `http://127.0.0.1:38080`。
 
 ### 3. 配置客户端
 
 将你的 AI 客户端（如 Cursor、Continue 等）的 API Base URL 指向本地代理：
 
 ```text
-http://127.0.0.1:8080/v1
+http://127.0.0.1:38080/v1
 ```
 
 ## API 端点

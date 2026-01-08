@@ -35,7 +35,7 @@ export async function modelsCommand(): Promise<void> {
   // Display usage hint
   logger.info("Usage:");
   logger.info("  Use the model ID in your API requests");
-  logger.info("  Example: curl http://127.0.0.1:8080/v1/chat/completions \\");
+  logger.info("  Example: curl http://127.0.0.1:38080/v1/chat/completions \\");
   logger.info('    -d \'{"model": "claude-sonnet-4-5", "messages": [...]}\'');
 }
 

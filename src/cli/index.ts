@@ -14,7 +14,7 @@ cli.option("--debug", "Enable debug logging");
 // Commands
 cli
   .command("start", "Start the proxy server")
-  .option("-p, --port <port>", "Server port", { default: 8080 })
+  .option("-p, --port <port>", "Server port", { default: 38080 })
   .option("-H, --host <host>", "Server host", { default: "127.0.0.1" })
   .option("-k, --api-key <key>", "API key for authentication")
   .action(startCommand);
