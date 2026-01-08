@@ -175,6 +175,37 @@ export function transformOpenAIToGemini(request: OpenAIChatRequest): TransformRe
     };
   }
 
+  // [Antigravity Identity Injection]
+  // Inject Antigravity identity to improve compatibility and reduce 429 rate limiting
+  const antigravityIdentity = `You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.
+You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.
+**Absolute paths only**
+**Proactiveness**`;
+
+  // Check if user already has Antigravity identity in systemInstruction
+  let userHasAntigravity = false;
+  if (systemInstruction?.parts) {
+    for (const part of systemInstruction.parts) {
+      if (part.text && part.text.includes("You are Antigravity")) {
+        userHasAntigravity = true;
+        break;
+      }
+    }
+  }
+
+  // If user doesn't have Antigravity identity, inject it
+  if (!userHasAntigravity) {
+    if (systemInstruction?.parts) {
+      // Insert Antigravity identity at the beginning
+      systemInstruction.parts.unshift({ text: antigravityIdentity });
+    } else {
+      // No systemInstruction, create a new one
+      systemInstruction = {
+        parts: [{ text: antigravityIdentity }],
+      };
+    }
+  }
+
   const geminiRequest: GeminiRequest = {
     contents,
     ...(systemInstruction && { systemInstruction }),
@@ -194,6 +225,11 @@ export function wrapInAntigravityEnvelope(
   geminiRequest: GeminiRequest,
   projectId: string
 ): AntigravityRequestBody {
+  // Ensure systemInstruction has role set (required by Antigravity API)
+  if (geminiRequest.systemInstruction) {
+    geminiRequest.systemInstruction.role = "user";
+  }
+
   return {
     project: projectId,
     model,
@@ -203,6 +239,8 @@ export function wrapInAntigravityEnvelope(
     },
     userAgent: "antigravity",
     requestId: `agy-${crypto.randomUUID()}`,
+    // requestType: 'agent' helps reduce 429 rate limiting
+    requestType: "agent",
   };
 }
 

@@ -223,6 +223,8 @@ export interface GeminiRequest {
   contents: GeminiContent[];
   systemInstruction?: {
     parts: Array<{ text: string }>;
+    /** role: 'user' is required by Antigravity API to reduce 429 */
+    role?: string;
   };
   generationConfig?: GeminiGenerationConfig;
   tools?: GeminiTool[];
@@ -255,6 +257,8 @@ export interface AntigravityRequestBody {
   request: GeminiRequest;
   userAgent?: string;
   requestId?: string;
+  /** requestType: 'agent' can help reduce 429 rate limiting */
+  requestType?: string;
 }
 
 export interface AntigravityResponse {

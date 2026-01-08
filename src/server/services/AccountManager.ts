@@ -13,7 +13,7 @@ export class AccountManager {
    */
   async getAccessToken(
     family: ModelFamily = "gemini"
-  ): Promise<{ token: string; projectId: string } | null> {
+  ): Promise<{ token: string; projectId: string; accountId: string } | null> {
     await tokenStore.load();
 
     const result = await tokenStore.getValidAccessToken(family);
@@ -23,7 +23,11 @@ export class AccountManager {
       return null;
     }
 
-    return { token: result.token, projectId: result.projectId };
+    return {
+      token: result.token,
+      projectId: result.projectId,
+      accountId: result.accountId
+    };
   }
 
   /**

@@ -78,19 +78,53 @@ export class ProxyService {
     }
 
     // 获取有效 token
-    const accountInfo = await this.accountManager.getAccessToken();
+    let accountInfo = await this.accountManager.getAccessToken();
     if (!accountInfo) {
       throw new Error("No available accounts/tokens");
     }
-    const { token, projectId } = accountInfo;
 
-    // 调用 API
-    const geminiResponse = await this.client.generateContent(
-      model,
-      geminiRequest,
-      token,
-      projectId
-    );
+    let geminiResponse;
+    const maxRetries = this.accountManager.getAccountCount() * 2; // Allow 2 attempts per account (approx)
+    let attempts = 0;
+
+    while (attempts < maxRetries) {
+      attempts++;
+      const { token, projectId, accountId } = accountInfo;
+
+      try {
+        // 调用 API
+        geminiResponse = await this.client.generateContent(
+          model,
+          geminiRequest,
+          token,
+          projectId
+        );
+        break; // Success
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
+
+        // Check for 429 Rate Limit
+        if (error.message.includes("429") || error.message.includes("RESOURCE_EXHAUSTED")) {
+          logger.warn(`Rate limit encountered for account ${accountId}. Switching account...`);
+
+          // Mark current account as rate limited (default 1 min)
+          this.accountManager.markRateLimited(accountId);
+
+          // Try to get next account
+          accountInfo = await this.accountManager.getAccessToken();
+          if (!accountInfo) {
+             throw new Error("No more available accounts after rate limit");
+          }
+          continue; // Retry with new account
+        }
+
+        throw error; // Other errors
+      }
+    }
+
+    if (!geminiResponse) {
+        throw new Error("Failed to generate content after retries");
+    }
 
     // 缓存 thinking 签名
     cacheThinkingSignaturesFromResponse(geminiResponse, sessionId);
@@ -140,11 +174,10 @@ export class ProxyService {
     }
 
     // 获取有效 token
-    const accountInfo = await this.accountManager.getAccessToken();
+    let accountInfo = await this.accountManager.getAccessToken();
     if (!accountInfo) {
       throw new Error("No available accounts/tokens");
     }
-    const { token, projectId } = accountInfo;
 
     // 创建流式上下文
     const streamContext = createStreamContext();
@@ -154,44 +187,75 @@ export class ProxyService {
     };
 
     return streamSSE(c, async (stream) => {
-      try {
-        const geminiStream = this.client.streamGenerateContent(
-          model,
-          geminiRequest,
-          token,
-          projectId
-        );
+      const maxRetries = this.accountManager.getAccountCount() * 2;
+      let attempts = 0;
 
-        for await (const chunk of geminiStream) {
-          // 缓存 thinking 签名
-          cacheThinkingSignaturesFromResponse(chunk, sessionId);
+      while (attempts < maxRetries) {
+        attempts++;
+        const { token, projectId, accountId } = accountInfo;
 
-          // 转换响应 chunk
-          const sseChunks = responseTranslator.fromGeminiStream(chunk, streamOptions);
+        try {
+          const geminiStream = this.client.streamGenerateContent(
+            model,
+            geminiRequest,
+            token,
+            projectId
+          );
 
-          for (const sseChunk of sseChunks) {
-            // sseChunk 已经是 "data: {...}\n\n" 格式
-            // streamSSE 的 writeSSE 需要 { data: string } 格式
-            // 我们需要提取 JSON 部分
-            const match = sseChunk.match(/^data: (.+)\n\n$/);
+          for await (const chunk of geminiStream) {
+            // 缓存 thinking 签名
+            cacheThinkingSignaturesFromResponse(chunk, sessionId);
+
+            // 转换响应 chunk
+            const sseChunks = responseTranslator.fromGeminiStream(chunk, streamOptions);
+
+            for (const sseChunk of sseChunks) {
+              // sseChunk 已经是 "data: {...}\n\n" 格式
+              // streamSSE 的 writeSSE 需要 { data: string } 格式
+              // 我们需要提取 JSON 部分
+              const match = sseChunk.match(/^data: (.+)\n\n$/);
+              if (match) {
+                await stream.writeSSE({ data: match[1] });
+              }
+            }
+          }
+
+          // 发送完成信号
+          const finishChunks = responseTranslator.finishStream(streamOptions);
+          for (const chunk of finishChunks) {
+            const match = chunk.match(/^data: (.+)\n\n$/);
             if (match) {
               await stream.writeSSE({ data: match[1] });
             }
           }
-        }
 
-        // 发送完成信号
-        const finishChunks = responseTranslator.finishStream(streamOptions);
-        for (const chunk of finishChunks) {
-          const match = chunk.match(/^data: (.+)\n\n$/);
-          if (match) {
-            await stream.writeSSE({ data: match[1] });
+          break; // Success
+        } catch (err: unknown) {
+          const error = err instanceof Error ? err : new Error(String(err));
+
+          // Check for 429 Rate Limit
+          if (error.message.includes("429") || error.message.includes("RESOURCE_EXHAUSTED")) {
+            logger.warn(`Rate limit encountered (stream) for account ${accountId}. Switching account...`);
+
+            // Mark current account as rate limited
+            this.accountManager.markRateLimited(accountId);
+
+            // Try to get next account
+            accountInfo = await this.accountManager.getAccessToken();
+            if (!accountInfo) {
+              logger.error("No more available accounts after rate limit");
+              throw new Error("No more available accounts after rate limit");
+            }
+            continue; // Retry with new account
           }
+
+          logger.error(error, "Stream error");
+          // If we've already started streaming, we can't do much but log.
+          // But if it failed at the start (e.g. 429), we haven't sent chunks yet?
+          // Actually streamSSE might have sent headers.
+          // But we can just stop.
+          throw error;
         }
-      } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error(error, "Stream error");
-        // SSE 开始后很难发送错误，只能记录日志
       }
     });
   }
