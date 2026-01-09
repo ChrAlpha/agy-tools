@@ -13,10 +13,10 @@ Antigravity API 多账户管理与格式转换工具。
 
 ```bash
 # 使用 pnpm (推荐)
-pnpm add -g chralpha/agy-tools
+pnpm add -g agy-tools
 
 # 或使用 npm
-npm install -g chralpha/agy-tools
+npm install -g agy-tools
 ```
 
 ## 快速开始
@@ -39,7 +39,7 @@ agy-tools start
 
 ### 3. 配置客户端
 
-将你的 AI 客户端（如 Cursor、Continue 等）的 API Base URL 指向本地代理：
+将你的 AI 客户端（如 Alma 等）的 API Base URL 指向本地代理：
 
 ```text
 http://127.0.0.1:38080/v1
