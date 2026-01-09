@@ -30,6 +30,7 @@ export {
   ensureToolIds,
   analyzeConversationState,
   needsThinkingRecovery,
+  generateStableSessionId,
 } from "./utils/thinkingUtils.js";
 
 // 导出内置 translators

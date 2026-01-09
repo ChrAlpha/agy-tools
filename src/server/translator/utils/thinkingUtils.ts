@@ -146,6 +146,32 @@ export function ensureToolIds(contents: GeminiContent[]): GeminiContent[] {
 }
 
 /**
+ * 生成稳定的会话 ID
+ * 相同的对话内容应获得相同的会话 ID，有助于减少 429 限制并维持会话连续性。
+ */
+export function generateStableSessionId(contents: GeminiContent[]): string {
+  // 查找第一个用户消息以创建稳定指纹
+  for (const content of contents) {
+    if (content.role === "user" && content.parts?.length) {
+      const firstPart = content.parts[0];
+      if ("text" in firstPart && firstPart.text) {
+        // 使用首个用户消息的前 200 个字符进行简单哈希
+        let hash = 0;
+        const text = firstPart.text.slice(0, 200);
+        for (let i = 0; i < text.length; i++) {
+          const char = text.charCodeAt(i);
+          hash = (hash << 5) - hash + char;
+          hash = hash & hash; // 转换为 32 位整数
+        }
+        return "-" + Math.abs(hash).toString();
+      }
+    }
+  }
+  // 如果没有找到用户内容，回退到随机 ID（12 位数字字符串以避免精度问题）
+  return "-" + Math.floor(Math.random() * 1000000000000).toString();
+}
+
+/**
  * 分析对话状态，检测是否需要 thinking recovery
  *
  * 当 Claude thinking 模型的对话出现问题时（如工具调用没有 thinking），

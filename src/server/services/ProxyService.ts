@@ -6,6 +6,7 @@ import {
   restoreThinkingSignatures,
   cacheThinkingSignaturesFromResponse,
   ensureToolIds,
+  generateStableSessionId,
   type InputFormat,
   type TranslateOptions,
   type StreamTranslateOptions,
@@ -14,13 +15,6 @@ import { AntigravityClient } from "./AntigravityClient.js";
 import { AccountManager } from "./AccountManager.js";
 import { logger } from "../../shared/logger.js";
 import { parseRetryDelay } from "../utils/errorParser.js";
-
-/**
- * 生成唯一的会话 ID
- */
-function generateSessionId(): string {
-  return `agy-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 /**
  * 生成请求 ID
@@ -39,13 +33,9 @@ export class ProxyService {
   }
 
   /**
-   * 处理非流式请求
+   * 准备请求 options 和转换后的请求
    */
-  async handleRequest(
-    body: unknown,
-    format: InputFormat = "openai-chat"
-  ): Promise<unknown> {
-    const sessionId = generateSessionId();
+  private prepareRequest(body: any, format: InputFormat, stream: boolean) {
     const requestId = generateRequestId();
 
     // 获取 translator
@@ -56,8 +46,8 @@ export class ProxyService {
     const options: TranslateOptions = {
       model: "",
       requestId,
-      sessionId,
-      stream: false,
+      sessionId: "", // 稍后设置
+      stream,
       originalRequest: body,
     };
 
@@ -65,8 +55,13 @@ export class ProxyService {
     let geminiRequest = translateResult.request;
     const model = translateResult.model;
 
-    // 更新 options 中的 model
+    // 生成稳定的 sessionId
+    const sessionId = generateStableSessionId(geminiRequest.contents || []);
+
+    // 更新 options 和 request 中的 sessionId
     options.model = model;
+    options.sessionId = sessionId;
+    geminiRequest.sessionId = sessionId;
 
     // 处理 thinking 签名恢复
     if (geminiRequest.contents) {
@@ -78,6 +73,19 @@ export class ProxyService {
       geminiRequest.contents = ensureToolIds(geminiRequest.contents);
     }
 
+    return { geminiRequest, model, options, sessionId, responseTranslator };
+  }
+
+  /**
+   * 处理非流式请求
+   */
+  async handleRequest(
+    body: unknown,
+    format: InputFormat = "openai-chat"
+  ): Promise<unknown> {
+    const { geminiRequest, model, options, sessionId, responseTranslator } =
+      this.prepareRequest(body, format, false);
+
     // 获取有效 token
     let accountInfo = await this.accountManager.getAccessToken();
     if (!accountInfo) {
@@ -85,7 +93,7 @@ export class ProxyService {
     }
 
     let geminiResponse;
-    const maxRetries = this.accountManager.getAccountCount() * 2; // Allow 2 attempts per account (approx)
+    const maxRetries = this.accountManager.getAccountCount() * 2;
     let attempts = 0;
 
     while (attempts < maxRetries) {
@@ -105,8 +113,13 @@ export class ProxyService {
         const error = err instanceof Error ? err : new Error(String(err));
 
         // Check for 429 Rate Limit
-        if (error.message.includes("429") || error.message.includes("RESOURCE_EXHAUSTED")) {
-          logger.warn(`Rate limit encountered for account ${accountId}. Switching account...`);
+        if (
+          error.message.includes("429") ||
+          error.message.includes("RESOURCE_EXHAUSTED")
+        ) {
+          logger.warn(
+            `Rate limit encountered for account ${accountId}. Switching account...`
+          );
 
           // Parse actual retry delay if available, otherwise default to 1 min
           const retryDelay = parseRetryDelay(error.message) || 60000;
@@ -143,37 +156,8 @@ export class ProxyService {
     body: unknown,
     format: InputFormat = "openai-chat"
   ): Promise<Response> {
-    const sessionId = generateSessionId();
-    const requestId = generateRequestId();
-
-    // 获取 translator
-    const requestTranslator = registry.getRequestTranslator(format);
-    const responseTranslator = registry.getResponseTranslator(format);
-
-    // 转换请求
-    const baseOptions: TranslateOptions = {
-      model: "",
-      requestId,
-      sessionId,
-      stream: true,
-      originalRequest: body,
-    };
-
-    const translateResult = requestTranslator.toGemini(body, baseOptions);
-    let geminiRequest = translateResult.request;
-    const model = translateResult.model;
-
-    // 更新 options 中的 model
-    baseOptions.model = model;
-
-    // 处理 thinking 签名恢复
-    if (geminiRequest.contents) {
-      geminiRequest = {
-        ...geminiRequest,
-        contents: restoreThinkingSignatures(geminiRequest.contents, sessionId),
-      };
-      geminiRequest.contents = ensureToolIds(geminiRequest.contents);
-    }
+    const { geminiRequest, model, options, sessionId, responseTranslator } =
+      this.prepareRequest(body, format, true);
 
     // 获取有效 token
     let accountInfo = await this.accountManager.getAccessToken();
@@ -184,7 +168,7 @@ export class ProxyService {
     // 创建流式上下文
     const streamContext = createStreamContext();
     const streamOptions: StreamTranslateOptions = {
-      ...baseOptions,
+      ...options,
       context: streamContext,
     };
 
@@ -194,6 +178,7 @@ export class ProxyService {
 
       while (attempts < maxRetries) {
         attempts++;
+        if (!accountInfo) break;
         const { token, projectId, accountId } = accountInfo;
 
         try {
@@ -209,15 +194,21 @@ export class ProxyService {
             cacheThinkingSignaturesFromResponse(chunk, sessionId);
 
             // 转换响应 chunk
-            const sseChunks = responseTranslator.fromGeminiStream(chunk, streamOptions);
+            const sseChunks = responseTranslator.fromGeminiStream(
+              chunk,
+              streamOptions
+            );
 
             for (const sseChunk of sseChunks) {
-              // sseChunk 已经是 "data: {...}\n\n" 格式
-              // streamSSE 的 writeSSE 需要 { data: string } 格式
-              // 我们需要提取 JSON 部分
-              const match = sseChunk.match(/^data: (.+)\n\n$/);
-              if (match) {
-                await stream.writeSSE({ data: match[1] });
+              // 修复正则解析逻辑，使其兼容 OpenAI 和 Claude 格式
+              const lines = sseChunk.split("\n");
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const dataStr = line.slice(6).trim();
+                  if (dataStr) {
+                    await stream.writeSSE({ data: dataStr });
+                  }
+                }
               }
             }
           }
@@ -225,9 +216,14 @@ export class ProxyService {
           // 发送完成信号
           const finishChunks = responseTranslator.finishStream(streamOptions);
           for (const chunk of finishChunks) {
-            const match = chunk.match(/^data: (.+)\n\n$/);
-            if (match) {
-              await stream.writeSSE({ data: match[1] });
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const dataStr = line.slice(6).trim();
+                if (dataStr) {
+                  await stream.writeSSE({ data: dataStr });
+                }
+              }
             }
           }
 
@@ -236,8 +232,13 @@ export class ProxyService {
           const error = err instanceof Error ? err : new Error(String(err));
 
           // Check for 429 Rate Limit
-          if (error.message.includes("429") || error.message.includes("RESOURCE_EXHAUSTED")) {
-            logger.warn(`Rate limit encountered (stream) for account ${accountId}. Switching account...`);
+          if (
+            error.message.includes("429") ||
+            error.message.includes("RESOURCE_EXHAUSTED")
+          ) {
+            logger.warn(
+              `Rate limit encountered (stream) for account ${accountId}. Switching account...`
+            );
 
             // Parse actual retry delay if available, otherwise default to 1 min
             const retryDelay = parseRetryDelay(error.message) || 60000;
@@ -252,11 +253,7 @@ export class ProxyService {
             continue; // Retry with new account
           }
 
-          logger.error(error, "Stream error");
-          // If we've already started streaming, we can't do much but log.
-          // But if it failed at the start (e.g. 429), we haven't sent chunks yet?
-          // Actually streamSSE might have sent headers.
-          // But we can just stop.
+          logger.error(error.message, "Stream error");
           throw error;
         }
       }
@@ -272,7 +269,9 @@ export class ProxyService {
     // 保持向后兼容
     const request = body as { stream?: boolean };
     if (request.stream) {
-      throw new Error("Streaming not supported in legacy mode, use handleStreamRequest");
+      throw new Error(
+        "Streaming not supported in legacy mode, use handleStreamRequest"
+      );
     }
     return this.handleRequest(body, "openai-chat");
   }

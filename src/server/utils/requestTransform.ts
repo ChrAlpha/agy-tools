@@ -17,6 +17,14 @@ import {
   parseModelWithTier,
   normalizeThinkingBudget,
 } from "../../shared/index.js";
+import { generateStableSessionId } from "../translator/index.js";
+import {
+  ANTIGRAVITY_HEADERS,
+  ANTIGRAVITY_ENDPOINTS,
+  ENDPOINT_PRIORITY,
+  loadConfig,
+} from "../../shared/index.js";
+import crypto from "crypto";
 
 /**
  * Result of transforming OpenAI request to Antigravity format
@@ -223,36 +231,6 @@ You are pair programming with a USER to solve their coding task. The task may re
 }
 
 /**
- * Generate a stable session ID based on conversation contents.
- * This helps reduce rate limiting by maintaining session continuity.
- *
- * Based on CLIProxyAPI's generateStableSessionID and antigravity-auth's
- * extractSessionFingerprint - same conversation should get same session ID.
- */
-function generateStableSessionId(contents: GeminiContent[]): string {
-  // Find first user message to create stable fingerprint
-  for (const content of contents) {
-    if (content.role === "user" && content.parts?.length) {
-      const firstPart = content.parts[0];
-      if ("text" in firstPart && firstPart.text) {
-        // Use simple hash of first user message
-        let hash = 0;
-        const text = firstPart.text.slice(0, 200); // Use first 200 chars
-        for (let i = 0; i < text.length; i++) {
-          const char = text.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash; // Convert to 32bit integer
-        }
-        // Return as numeric string like CLIProxyAPI does
-        return "-" + Math.abs(hash).toString();
-      }
-    }
-  }
-  // Fallback to random if no user content found
-  return "-" + Math.floor(Math.random() * 9_000_000_000_000_000_000).toString();
-}
-
-/**
  * Wrap Gemini request in Antigravity envelope
  */
 export function wrapInAntigravityEnvelope(
@@ -265,11 +243,14 @@ export function wrapInAntigravityEnvelope(
     geminiRequest.systemInstruction.role = "user";
   }
 
-  // Generate stable session ID based on conversation contents
-  // This helps reduce rate limiting by maintaining session continuity
-  const sessionId = geminiRequest.contents
-    ? generateStableSessionId(geminiRequest.contents)
-    : "-" + Math.floor(Math.random() * 9_000_000_000_000_000_000).toString();
+  // Use the sessionId already present in geminiRequest if available,
+  // otherwise generate a stable one or fallback to random.
+  // This ensures consistency between internal caching and external API calls.
+  const sessionId =
+    geminiRequest.sessionId ||
+    (geminiRequest.contents
+      ? generateStableSessionId(geminiRequest.contents)
+      : "-" + Math.floor(Math.random() * 1000000000000).toString());
 
   return {
     project: projectId,
