@@ -148,11 +148,15 @@ export class ProxyService {
             error.message.includes("429") ||
             error.message.includes("RESOURCE_EXHAUSTED")
           ) {
+            // Parse retry delay first (used for both quota and rate limit)
+            const retryDelay = parseRetryDelay(error.message);
+
             // Check if it's quota exhausted specifically (not just rate limit)
+            // Note: "Resource has been exhausted" is the generic rate limit message,
+            // only match explicit QUOTA mentions for actual quota exhaustion
             const isQuotaExhausted =
               error.message.includes("QUOTA_EXHAUSTED") ||
-              error.message.toUpperCase().includes("QUOTA") ||
-              error.message.includes("exceeded");
+              error.message.toUpperCase().includes("QUOTA");
 
             if (isQuotaExhausted) {
               logger.warn(
@@ -160,17 +164,15 @@ export class ProxyService {
               );
               quotaExhausted = true;
 
-              // Mark this model as quota exhausted for all accounts
-              this.accountManager.markRateLimited(accountId, 3600000, currentModel); // 1 hour cooldown
+              // Mark this model as quota exhausted with 1 hour cooldown (or longer if specified)
+              this.accountManager.markRateLimited(accountId, Math.max(retryDelay || 0, 3600000), currentModel);
             } else {
               logger.warn(
                 `Rate limit encountered for account ${accountId} on model ${currentModel}. Switching account...`
               );
+              // Use parsed retry delay or exponential backoff (60s default triggers backoff)
+              this.accountManager.markRateLimited(accountId, retryDelay || 60000, currentModel);
             }
-
-            // Parse actual retry delay if available
-            const retryDelay = parseRetryDelay(error.message);
-            this.accountManager.markRateLimited(accountId, retryDelay || 60000, currentModel);
 
             // Try to get next account (model-aware)
             accountInfo = await this.accountManager.getAccessToken("gemini", currentModel);
@@ -326,27 +328,30 @@ export class ProxyService {
               error.message.includes("429") ||
               error.message.includes("RESOURCE_EXHAUSTED")
             ) {
+              // Parse retry delay first (used for both quota and rate limit)
+              const retryDelay = parseRetryDelay(error.message);
+
               // Check if it's quota exhausted specifically
+              // Note: "Resource has been exhausted" is the generic rate limit message,
+              // only match explicit QUOTA mentions for actual quota exhaustion
               const isQuotaExhausted =
                 error.message.includes("QUOTA_EXHAUSTED") ||
-                error.message.toUpperCase().includes("QUOTA") ||
-                error.message.includes("exceeded");
+                error.message.toUpperCase().includes("QUOTA");
 
               if (isQuotaExhausted) {
                 logger.warn(
                   `Quota exhausted (stream) for account ${accountId} on model ${currentModel}. Marking and switching...`
                 );
                 quotaExhausted = true;
-                this.accountManager.markRateLimited(accountId, 3600000, currentModel); // 1 hour
+                // Mark this model as quota exhausted with 1 hour cooldown (or longer if specified)
+                this.accountManager.markRateLimited(accountId, Math.max(retryDelay || 0, 3600000), currentModel);
               } else {
                 logger.warn(
                   `Rate limit encountered (stream) for account ${accountId} on model ${currentModel}. Switching account...`
                 );
+                // Use parsed retry delay or exponential backoff (60s default triggers backoff)
+                this.accountManager.markRateLimited(accountId, retryDelay || 60000, currentModel);
               }
-
-              // Parse actual retry delay if available
-              const retryDelay = parseRetryDelay(error.message);
-              this.accountManager.markRateLimited(accountId, retryDelay || 60000, currentModel);
 
               // Try to get next account (model-aware)
               accountInfo = await this.accountManager.getAccessToken("gemini", currentModel);
