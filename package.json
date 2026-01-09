@@ -3,9 +3,15 @@
   "version": "0.1.0",
   "description": "Antigravity API reverse proxy with multi-account management",
   "type": "module",
+  "main": "./dist/bin/agy-tools.js",
   "bin": {
-    "agy-tools": "./dist/bin/agy-tools.js"
+    "agy-tools": "dist/bin/agy-tools.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "tsx watch src/bin/agy-tools.ts",
     "build": "tsup",
