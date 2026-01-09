@@ -7,6 +7,7 @@ Antigravity API 多账户管理与格式转换工具。
 - **多账户轮换** - 支持添加多个 Google 账户，自动负载均衡和 Token 刷新
 - **全格式支持** - 同时暴露 OpenAI Chat、OpenAI Responses、Claude Messages 等 API 格式
 - **Thinking 智能支持** - 完整支持 Claude/Gemini thinking blocks，自动处理签名缓存和多轮对话
+- **模型自动降级** - 当 Pro/Flash 额度用完时，自动切换到 Preview 模型（可配置）
 - **Coding Agent 集成** - 一键启动并自动配置 Claude Code 等开发助手
 
 ## 安装
@@ -109,7 +110,27 @@ agy-tools code claude
 
 - `agy-tools config`: 查看当前配置
 - `agy-tools config set <key> <value>`: 修改配置项
+  - `proxy.switchPreviewModel`: 启用/禁用模型自动降级 (默认 `true`)
 - `agy-tools config reset`: 恢复默认配置
+
+#### 模型自动降级
+
+当启用 `proxy.switchPreviewModel` 时，如果某个模型的配额用尽，系统会自动切换到对应的 Preview 模型：
+
+- `gemini-2.5-pro` → `gemini-2.5-pro-preview`
+- `gemini-2.5-flash` → `gemini-2.5-flash-preview`
+- `gemini-3-pro` → `gemini-3-pro-preview`
+- `gemini-3-flash` → `gemini-3-flash-preview`
+
+示例：
+
+```bash
+# 启用模型降级（默认已启用）
+agy-tools config set proxy.switchPreviewModel true
+
+# 禁用模型降级
+agy-tools config set proxy.switchPreviewModel false
+```
 
 ### 工具
 

@@ -19,6 +19,7 @@ export const configCommand = {
     logger.print(chalk.cyan("\nProxy:"));
     logger.print(`  defaultEndpoint: ${config.proxy.defaultEndpoint}`);
     logger.print(`  endpoints: ${config.proxy.endpoints.join(", ")}`);
+    logger.print(`  switchPreviewModel: ${config.proxy.switchPreviewModel}`);
     logger.print("");
   },
 
@@ -61,13 +62,19 @@ export const configCommand = {
       }
     } else if (section === "proxy") {
       if (field === "defaultEndpoint") {
-        if (!["daily", "autopush", "prod"].includes(value)) {
-          logger.error("Endpoint must be: daily, autopush, or prod");
+        if (!["daily", "dailyNonSandbox", "autopush", "prod"].includes(value)) {
+          logger.error("Endpoint must be: daily, dailyNonSandbox, autopush, or prod");
           process.exit(1);
         }
         updates.proxy = {
           ...config.proxy,
-          defaultEndpoint: value as "daily" | "autopush" | "prod",
+          defaultEndpoint: value as "daily" | "dailyNonSandbox" | "autopush" | "prod",
+        };
+      } else if (field === "switchPreviewModel") {
+        const boolValue = value.toLowerCase() === "true" || value === "1";
+        updates.proxy = {
+          ...config.proxy,
+          switchPreviewModel: boolValue,
         };
       } else {
         logger.error(`Unknown proxy field: ${field}`);

@@ -46,16 +46,23 @@ cli
   .action(accountsCommand.clearRateLimits);
 
 cli
-  .command("config", "Show current configuration")
-  .action(configCommand.show);
-
-cli
-  .command("config set <key> <value>", "Set a configuration value")
-  .action(configCommand.set);
-
-cli
-  .command("config reset", "Reset configuration to defaults")
-  .action(configCommand.reset);
+  .command("config [action] [key] [value]", "Manage configuration")
+  .action((action?: string, key?: string, value?: string) => {
+    if (!action || action === "show") {
+      configCommand.show();
+    } else if (action === "set") {
+      if (!key || !value) {
+        console.error("Usage: agy-tools config set <key> <value>");
+        process.exit(1);
+      }
+      configCommand.set(key, value);
+    } else if (action === "reset") {
+      configCommand.reset();
+    } else {
+      console.error(`Unknown config action: ${action}`);
+      process.exit(1);
+    }
+  });
 
 cli
   .command("models", "List all available models")

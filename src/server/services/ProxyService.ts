@@ -15,6 +15,8 @@ import { AntigravityClient } from "./AntigravityClient.js";
 import { AccountManager } from "./AccountManager.js";
 import { logger } from "../../shared/logger.js";
 import { parseRetryDelay } from "../utils/errorParser.js";
+import { loadConfig } from "../../shared/config.js";
+import { getModelFallbacks } from "../../shared/constants.js";
 
 /**
  * 生成请求 ID
@@ -79,6 +81,7 @@ export class ProxyService {
   /**
    * 处理非流式请求
    * Uses model-aware account selection and tracks success/failure per model.
+   * Supports automatic model fallback when quota is exceeded.
    */
   async handleRequest(
     body: unknown,
@@ -87,76 +90,127 @@ export class ProxyService {
     const { geminiRequest, model, options, sessionId, responseTranslator } =
       this.prepareRequest(body, format, false);
 
-    // 获取有效 token (now with model-aware filtering)
-    let accountInfo = await this.accountManager.getAccessToken("gemini", model);
-    if (!accountInfo) {
-      logger.error(`No available accounts/tokens for model ${model}`);
-      logger.error("Run 'agy-tools accounts list' to see account details");
-      throw new Error(`No available accounts/tokens for model ${model}`);
-    }
+    // Check if model fallback is enabled
+    const config = loadConfig();
+    const enableFallback = config.proxy.switchPreviewModel;
 
-    let geminiResponse;
-    const maxRetries = this.accountManager.getAccountCount() * 2;
-    let attempts = 0;
+    // Build model attempt list: [original, ...fallbacks]
+    const modelsToTry = enableFallback
+      ? [model, ...getModelFallbacks(model)]
+      : [model];
 
-    while (attempts < maxRetries) {
-      attempts++;
-      const { token, projectId, accountId } = accountInfo;
+    logger.debug(`Models to try: ${modelsToTry.join(" -> ")}`);
 
-      try {
-        // 调用 API
-        geminiResponse = await this.client.generateContent(
-          model,
-          geminiRequest,
-          token,
-          projectId
-        );
+    let lastError: Error | null = null;
 
-        // Mark success to reset backoff level for this model
-        this.accountManager.markSuccess(accountId, model);
-        break; // Success
-      } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err));
+    // Try each model in the fallback chain
+    for (const currentModel of modelsToTry) {
+      // 获取有效 token (now with model-aware filtering)
+      let accountInfo = await this.accountManager.getAccessToken("gemini", currentModel);
+      if (!accountInfo) {
+        logger.warn(`No available accounts/tokens for model ${currentModel}, trying next...`);
+        continue;
+      }
 
-        // Check for 429 Rate Limit
-        if (
-          error.message.includes("429") ||
-          error.message.includes("RESOURCE_EXHAUSTED")
-        ) {
-          logger.warn(
-            `Rate limit encountered for account ${accountId} on model ${model}. Switching account...`
+      let geminiResponse;
+      const maxRetries = this.accountManager.getAccountCount() * 2;
+      let attempts = 0;
+      let quotaExhausted = false;
+
+      while (attempts < maxRetries) {
+        attempts++;
+        const { token, projectId, accountId } = accountInfo;
+
+        try {
+          // 调用 API (use current model in fallback chain)
+          geminiResponse = await this.client.generateContent(
+            currentModel,
+            geminiRequest,
+            token,
+            projectId
           );
 
-          // Parse actual retry delay if available, otherwise let markRateLimited use exponential backoff
-          const retryDelay = parseRetryDelay(error.message);
-          this.accountManager.markRateLimited(accountId, retryDelay || 60000, model);
+          // Mark success to reset backoff level for this model
+          this.accountManager.markSuccess(accountId, currentModel);
 
-          // Try to get next account (model-aware)
-          accountInfo = await this.accountManager.getAccessToken("gemini", model);
-          if (!accountInfo) {
-            throw new Error(`No more available accounts for model ${model} after rate limit`);
+          // Log if we switched to a fallback model
+          if (currentModel !== model) {
+            logger.info(`Successfully switched to fallback model: ${currentModel}`);
           }
-          continue; // Retry with new account
-        }
 
-        throw error; // Other errors
+          break; // Success
+        } catch (err: unknown) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          lastError = error;
+
+          // Check for 429 Rate Limit
+          if (
+            error.message.includes("429") ||
+            error.message.includes("RESOURCE_EXHAUSTED")
+          ) {
+            // Check if it's quota exhausted specifically (not just rate limit)
+            const isQuotaExhausted =
+              error.message.includes("QUOTA_EXHAUSTED") ||
+              error.message.toUpperCase().includes("QUOTA") ||
+              error.message.includes("exceeded");
+
+            if (isQuotaExhausted) {
+              logger.warn(
+                `Quota exhausted for account ${accountId} on model ${currentModel}. Marking and switching...`
+              );
+              quotaExhausted = true;
+
+              // Mark this model as quota exhausted for all accounts
+              this.accountManager.markRateLimited(accountId, 3600000, currentModel); // 1 hour cooldown
+            } else {
+              logger.warn(
+                `Rate limit encountered for account ${accountId} on model ${currentModel}. Switching account...`
+              );
+            }
+
+            // Parse actual retry delay if available
+            const retryDelay = parseRetryDelay(error.message);
+            this.accountManager.markRateLimited(accountId, retryDelay || 60000, currentModel);
+
+            // Try to get next account (model-aware)
+            accountInfo = await this.accountManager.getAccessToken("gemini", currentModel);
+            if (!accountInfo) {
+              logger.warn(`No more available accounts for model ${currentModel}`);
+              break; // Move to next fallback model
+            }
+            continue; // Retry with new account
+          }
+
+          throw error; // Other errors
+        }
+      }
+
+      if (geminiResponse) {
+        // Success! Cache thinking signatures and return
+        cacheThinkingSignaturesFromResponse(geminiResponse, sessionId);
+
+        // Update options with actual model used
+        options.model = currentModel;
+
+        return responseTranslator.fromGemini(geminiResponse, options);
+      }
+
+      // If quota exhausted, try next model in fallback chain
+      if (quotaExhausted && currentModel !== modelsToTry[modelsToTry.length - 1]) {
+        logger.info(`Trying fallback model due to quota exhaustion...`);
+        continue;
       }
     }
 
-    if (!geminiResponse) {
-      throw new Error(`Failed to generate content for model ${model} after retries`);
-    }
-
-    // 缓存 thinking 签名
-    cacheThinkingSignaturesFromResponse(geminiResponse, sessionId);
-
-    // 转换响应
-    return responseTranslator.fromGemini(geminiResponse, options);
+    // All models failed
+    logger.error(`All models exhausted for ${model}. Original: ${model}, Tried: ${modelsToTry.join(", ")}`);
+    throw lastError || new Error(`Failed to generate content for model ${model} after trying all fallbacks`);
   }
 
   /**
    * 处理流式请求
    * Uses model-aware account selection and tracks success/failure per model.
+   * Supports automatic model fallback when quota is exceeded.
    */
   async handleStreamRequest(
     c: Context,
@@ -166,11 +220,16 @@ export class ProxyService {
     const { geminiRequest, model, options, sessionId, responseTranslator } =
       this.prepareRequest(body, format, true);
 
-    // 获取有效 token (now with model-aware filtering)
-    let accountInfo = await this.accountManager.getAccessToken("gemini", model);
-    if (!accountInfo) {
-      throw new Error(`No available accounts/tokens for model ${model}`);
-    }
+    // Check if model fallback is enabled
+    const config = loadConfig();
+    const enableFallback = config.proxy.switchPreviewModel;
+
+    // Build model attempt list: [original, ...fallbacks]
+    const modelsToTry = enableFallback
+      ? [model, ...getModelFallbacks(model)]
+      : [model];
+
+    logger.debug(`Stream models to try: ${modelsToTry.join(" -> ")}`);
 
     // 创建流式上下文
     const streamContext = createStreamContext();
@@ -180,35 +239,64 @@ export class ProxyService {
     };
 
     return streamSSE(c, async (stream) => {
-      const maxRetries = this.accountManager.getAccountCount() * 2;
-      let attempts = 0;
+      let lastError: Error | null = null;
 
-      while (attempts < maxRetries) {
-        attempts++;
-        if (!accountInfo) break;
-        const { token, projectId, accountId } = accountInfo;
+      // Try each model in the fallback chain
+      for (const currentModel of modelsToTry) {
+        // 获取有效 token (now with model-aware filtering)
+        let accountInfo = await this.accountManager.getAccessToken("gemini", currentModel);
+        if (!accountInfo) {
+          logger.warn(`No available accounts/tokens for model ${currentModel}, trying next...`);
+          continue;
+        }
 
-        try {
-          const geminiStream = this.client.streamGenerateContent(
-            model,
-            geminiRequest,
-            token,
-            projectId
-          );
+        const maxRetries = this.accountManager.getAccountCount() * 2;
+        let attempts = 0;
+        let quotaExhausted = false;
+        let streamSuccess = false;
 
-          for await (const chunk of geminiStream) {
-            // 缓存 thinking 签名
-            cacheThinkingSignaturesFromResponse(chunk, sessionId);
+        while (attempts < maxRetries) {
+          attempts++;
+          if (!accountInfo) break;
+          const { token, projectId, accountId } = accountInfo;
 
-            // 转换响应 chunk
-            const sseChunks = responseTranslator.fromGeminiStream(
-              chunk,
-              streamOptions
+          try {
+            const geminiStream = this.client.streamGenerateContent(
+              currentModel,
+              geminiRequest,
+              token,
+              projectId
             );
 
-            for (const sseChunk of sseChunks) {
-              // 修复正则解析逻辑，使其兼容 OpenAI 和 Claude 格式
-              const lines = sseChunk.split("\n");
+            for await (const chunk of geminiStream) {
+              // 缓存 thinking 签名
+              cacheThinkingSignaturesFromResponse(chunk, sessionId);
+
+              // 转换响应 chunk (use current model)
+              streamOptions.model = currentModel;
+              const sseChunks = responseTranslator.fromGeminiStream(
+                chunk,
+                streamOptions
+              );
+
+              for (const sseChunk of sseChunks) {
+                // 修复正则解析逻辑，使其兼容 OpenAI 和 Claude 格式
+                const lines = sseChunk.split("\n");
+                for (const line of lines) {
+                  if (line.startsWith("data: ")) {
+                    const dataStr = line.slice(6).trim();
+                    if (dataStr) {
+                      await stream.writeSSE({ data: dataStr });
+                    }
+                  }
+                }
+              }
+            }
+
+            // 发送完成信号
+            const finishChunks = responseTranslator.finishStream(streamOptions);
+            for (const chunk of finishChunks) {
+              const lines = chunk.split("\n");
               for (const line of lines) {
                 if (line.startsWith("data: ")) {
                   const dataStr = line.slice(6).trim();
@@ -218,54 +306,76 @@ export class ProxyService {
                 }
               }
             }
-          }
 
-          // 发送完成信号
-          const finishChunks = responseTranslator.finishStream(streamOptions);
-          for (const chunk of finishChunks) {
-            const lines = chunk.split("\n");
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const dataStr = line.slice(6).trim();
-                if (dataStr) {
-                  await stream.writeSSE({ data: dataStr });
-                }
+            // Mark success to reset backoff level for this model
+            this.accountManager.markSuccess(accountId, currentModel);
+
+            // Log if we switched to a fallback model
+            if (currentModel !== model) {
+              logger.info(`Successfully switched to fallback model (stream): ${currentModel}`);
+            }
+
+            streamSuccess = true;
+            break; // Success
+          } catch (err: unknown) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            lastError = error;
+
+            // Check for 429 Rate Limit
+            if (
+              error.message.includes("429") ||
+              error.message.includes("RESOURCE_EXHAUSTED")
+            ) {
+              // Check if it's quota exhausted specifically
+              const isQuotaExhausted =
+                error.message.includes("QUOTA_EXHAUSTED") ||
+                error.message.toUpperCase().includes("QUOTA") ||
+                error.message.includes("exceeded");
+
+              if (isQuotaExhausted) {
+                logger.warn(
+                  `Quota exhausted (stream) for account ${accountId} on model ${currentModel}. Marking and switching...`
+                );
+                quotaExhausted = true;
+                this.accountManager.markRateLimited(accountId, 3600000, currentModel); // 1 hour
+              } else {
+                logger.warn(
+                  `Rate limit encountered (stream) for account ${accountId} on model ${currentModel}. Switching account...`
+                );
               }
+
+              // Parse actual retry delay if available
+              const retryDelay = parseRetryDelay(error.message);
+              this.accountManager.markRateLimited(accountId, retryDelay || 60000, currentModel);
+
+              // Try to get next account (model-aware)
+              accountInfo = await this.accountManager.getAccessToken("gemini", currentModel);
+              if (!accountInfo) {
+                logger.warn(`No more available accounts for model ${currentModel}`);
+                break; // Move to next fallback model
+              }
+              continue; // Retry with new account
             }
+
+            logger.error(error.message, "Stream error");
+            throw error; // Other errors - will be caught by outer handler
           }
+        }
 
-          // Mark success to reset backoff level for this model
-          this.accountManager.markSuccess(accountId, model);
-          break; // Success
-        } catch (err: unknown) {
-          const error = err instanceof Error ? err : new Error(String(err));
+        if (streamSuccess) {
+          return; // Stream completed successfully
+        }
 
-          // Check for 429 Rate Limit
-          if (
-            error.message.includes("429") ||
-            error.message.includes("RESOURCE_EXHAUSTED")
-          ) {
-            logger.warn(
-              `Rate limit encountered (stream) for account ${accountId} on model ${model}. Switching account...`
-            );
-
-            // Parse actual retry delay if available, otherwise let markRateLimited use exponential backoff
-            const retryDelay = parseRetryDelay(error.message);
-            this.accountManager.markRateLimited(accountId, retryDelay || 60000, model);
-
-            // Try to get next account (model-aware)
-            accountInfo = await this.accountManager.getAccessToken("gemini", model);
-            if (!accountInfo) {
-              logger.error(`No more available accounts for model ${model} after rate limit`);
-              throw new Error(`No more available accounts for model ${model} after rate limit`);
-            }
-            continue; // Retry with new account
-          }
-
-          logger.error(error.message, "Stream error");
-          throw error;
+        // If quota exhausted, try next model in fallback chain
+        if (quotaExhausted && currentModel !== modelsToTry[modelsToTry.length - 1]) {
+          logger.info(`Trying fallback model (stream) due to quota exhaustion...`);
+          continue;
         }
       }
+
+      // All models failed
+      logger.error(`All models exhausted (stream) for ${model}. Tried: ${modelsToTry.join(", ")}`);
+      throw lastError || new Error(`Failed to stream content for model ${model} after trying all fallbacks`);
     });
   }
 

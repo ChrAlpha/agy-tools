@@ -1,4 +1,14 @@
 import type { AntigravityEndpoint, ModelInfo, ModelFamily } from "./types.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+// ============================================
+// Config Paths
+// ============================================
+
+export const CONFIG_DIR = join(homedir(), ".agy-tools");
+export const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+export const ACCOUNTS_FILE = join(CONFIG_DIR, "accounts.json");
 
 // ============================================
 // OAuth Constants
@@ -56,6 +66,50 @@ export const GEMINI_CLI_HEADERS = {
   "X-Goog-Api-Client": "gl-node/22.17.0",
   "Client-Metadata": "ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI",
 };
+
+// ============================================
+// Default Configs
+// ============================================
+
+export const DEFAULT_SERVER_CONFIG = {
+  host: "127.0.0.1",
+  port: 38080,
+};
+
+export const DEFAULT_PROXY_CONFIG = {
+  endpoints: ENDPOINT_PRIORITY,
+  defaultEndpoint: "daily" as AntigravityEndpoint,
+  switchPreviewModel: true, // Enable auto fallback to preview models
+};
+
+// ============================================
+// Model Fallback Mappings
+// ============================================
+
+/**
+ * Model fallback mapping for quota exhausted scenarios.
+ * When a stable model runs out of quota, try preview models as fallback.
+ */
+export const MODEL_FALLBACK_MAP: Record<string, string[]> = {
+  // Gemini 2.5 series
+  "gemini-2.5-pro": ["gemini-2.5-pro-preview"],
+  "gemini-2.5-flash": ["gemini-2.5-flash-preview"],
+  "gemini-2.5-flash-lite": ["gemini-2.5-flash-lite-preview"],
+
+  // Gemini 3 series
+  "gemini-3-pro": ["gemini-3-pro-preview"],
+  "gemini-3-pro-low": ["gemini-3-pro-preview"],
+  "gemini-3-pro-high": ["gemini-3-pro-preview"],
+  "gemini-3-flash": ["gemini-3-flash-preview"],
+};
+
+/**
+ * Get fallback models for a given model when quota is exceeded.
+ * Returns empty array if no fallback is available.
+ */
+export function getModelFallbacks(model: string): string[] {
+  return MODEL_FALLBACK_MAP[model] || [];
+}
 
 // ============================================
 // Model Definitions
@@ -237,15 +291,15 @@ export const MODELS: ModelInfo[] = [
   // =========================================================================
   // Gemini 3.0 Models
   // =========================================================================
-  {
-    id: "gemini-3-pro",
-    name: "Gemini 3 Pro",
-    baseModel: "gemini-3-pro",
-    family: "gemini",
-    contextWindow: 1048576,
-    maxOutputTokens: 65536,
-    supportsStreaming: true,
-  },
+  // {
+  //   id: "gemini-3-pro",
+  //   name: "Gemini 3 Pro",
+  //   baseModel: "gemini-3-pro",
+  //   family: "gemini",
+  //   contextWindow: 1048576,
+  //   maxOutputTokens: 65536,
+  //   supportsStreaming: true,
+  // },
   {
     id: "gemini-3-pro-low",
     name: "Gemini 3 Pro Low",
@@ -264,15 +318,15 @@ export const MODELS: ModelInfo[] = [
     maxOutputTokens: 65536,
     supportsStreaming: true,
   },
-  {
-    id: 'gemini-3-pro-preview',
-    name: 'Gemini 3 Pro Preview',
-    baseModel: 'gemini-3-pro-preview',
-    family: 'gemini',
-    contextWindow: 1048576,
-    maxOutputTokens: 65536,
-    supportsStreaming: true,
-  },
+  // {
+  //   id: 'gemini-3-pro-preview',
+  //   name: 'Gemini 3 Pro Preview',
+  //   baseModel: 'gemini-3-pro-preview',
+  //   family: 'gemini',
+  //   contextWindow: 1048576,
+  //   maxOutputTokens: 65536,
+  //   supportsStreaming: true,
+  // },
   {
     id: "gemini-3-flash",
     name: "Gemini 3 Flash",
@@ -378,28 +432,3 @@ export function parseModelWithTier(modelId: string): {
     thinkingLevel: "none",
   };
 }
-
-// ============================================
-// Default Configuration
-// ============================================
-
-export const DEFAULT_SERVER_CONFIG = {
-  host: "127.0.0.1",
-  port: 38080,
-};
-
-export const DEFAULT_PROXY_CONFIG = {
-  endpoints: ENDPOINT_PRIORITY,
-  defaultEndpoint: "daily" as AntigravityEndpoint,
-};
-
-// ============================================
-// File Paths
-// ============================================
-
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-export const CONFIG_DIR = join(homedir(), ".agy-tools");
-export const ACCOUNTS_FILE = join(CONFIG_DIR, "accounts.json");
-export const CONFIG_FILE = join(CONFIG_DIR, "config.json");

@@ -69,6 +69,7 @@ export interface ServerConfig {
 export interface ProxyConfig {
   endpoints: AntigravityEndpoint[];
   defaultEndpoint: AntigravityEndpoint;
+  switchPreviewModel: boolean; // Auto switch to preview model when quota exceeded
 }
 
 export type AntigravityEndpoint = "daily" | "dailyNonSandbox" | "autopush" | "prod";
