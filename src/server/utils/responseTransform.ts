@@ -1,3 +1,16 @@
+/**
+ * @deprecated This file contains legacy transform functions that have been moved to the translator system.
+ * 
+ * Migration status:
+ * - unwrapAntigravityResponse() -> MOVED to translator/utils.ts
+ * - transformGeminiToOpenAI() -> DEPRECATED - Use translator/openai-chat instead
+ * - createStreamChunk() -> DEPRECATED - Use translator system's stream methods
+ * - formatSSE() -> DEPRECATED - Use translator system's stream methods
+ * 
+ * This file is kept for backward compatibility only.
+ * New code should use the translator system via translator/index.ts
+ */
+
 import type {
   GeminiResponse,
   GeminiCandidate,
@@ -8,17 +21,12 @@ import type {
   OpenAIToolCall,
 } from "../../shared/index.js";
 
-/**
- * Unwrap Antigravity response envelope
- */
-export function unwrapAntigravityResponse(data: unknown): GeminiResponse {
-  if (typeof data === "object" && data !== null && "response" in data) {
-    return (data as { response: GeminiResponse }).response;
-  }
-  return data as GeminiResponse;
-}
+// Re-export from translator/utils for backward compatibility
+export { unwrapAntigravityResponse } from "../translator/utils.js";
 
 /**
+ * @deprecated Use translator system instead: registry.getResponseTranslator("openai-chat").fromGemini()
+ * 
  * Transform Gemini response to OpenAI format
  */
 export function transformGeminiToOpenAI(
@@ -51,6 +59,10 @@ export function transformGeminiToOpenAI(
   };
 }
 
+/**
+ * @deprecated Moved to translator/openai-chat as a private method
+ * Transform Gemini candidate to OpenAI choice
+ */
 function transformCandidate(
   candidate: GeminiCandidate,
   index: number
@@ -99,6 +111,10 @@ function transformCandidate(
   };
 }
 
+/**
+ * @deprecated Moved to translator/openai-chat as a private method
+ * Map Gemini finish reason to OpenAI format
+ */
 export function mapFinishReason(
   reason?: string
 ): "stop" | "length" | "tool_calls" | "content_filter" | null {
@@ -116,6 +132,7 @@ export function mapFinishReason(
 }
 
 /**
+ * @deprecated Use translator system's stream methods instead
  * Create an OpenAI-compatible streaming chunk
  */
 export function createStreamChunk(
@@ -140,6 +157,7 @@ export function createStreamChunk(
 }
 
 /**
+ * @deprecated Use translator system's stream methods instead
  * Format data for SSE
  */
 export function formatSSE(data: unknown): string {
@@ -147,6 +165,7 @@ export function formatSSE(data: unknown): string {
 }
 
 /**
+ * @deprecated Use translator system's stream methods instead
  * Format SSE done signal
  */
 export function formatSSEDone(): string {

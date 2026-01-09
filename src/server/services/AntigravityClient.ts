@@ -6,8 +6,7 @@ import {
   loadConfig,
 } from "../../shared/index.js";
 import { logger } from "../../shared/logger.js";
-import { wrapInAntigravityEnvelope } from "../utils/requestTransform.js";
-import { unwrapAntigravityResponse } from "../utils/responseTransform.js";
+import { wrapInAntigravityEnvelope, unwrapAntigravityResponse } from "../translator/utils.js";
 
 export class AntigravityClient {
   /**

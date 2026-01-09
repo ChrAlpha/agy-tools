@@ -20,6 +20,13 @@ export type {
 // 导出工具函数
 export { createStreamContext } from "./types.js";
 
+// 导出共享工具函数
+export {
+  generateProjectId,
+  wrapInAntigravityEnvelope,
+  unwrapAntigravityResponse
+} from "./utils.js";
+
 // 导出 Registry
 export { registry, registerTranslator, registerTranslatorPair } from "./registry.js";
 

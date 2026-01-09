@@ -1,3 +1,16 @@
+/**
+ * @deprecated This file contains legacy transform functions that have been moved to the translator system.
+ * 
+ * Migration status:
+ * - transformOpenAIToGemini() -> DEPRECATED - Use translator/openai-chat instead
+ * - wrapInAntigravityEnvelope() -> MOVED to translator/utils.ts
+ * - generateProjectId() -> MOVED to translator/utils.ts
+ * - sanitizeSchema() -> MOVED to translator/openai-chat (private method)
+ * 
+ * This file is kept for backward compatibility only.
+ * New code should use the translator system via translator/index.ts
+ */
+
 import type {
   OpenAIChatRequest,
   OpenAIMessage,
@@ -6,7 +19,6 @@ import type {
   GeminiPart,
   GeminiTool,
   OpenAITool,
-  AntigravityRequestBody,
   GeminiToolConfig,
 } from "../../shared/index.js";
 import {
@@ -17,24 +29,13 @@ import {
   parseModelWithTier,
   normalizeThinkingBudget,
 } from "../../shared/index.js";
-import { generateStableSessionId } from "../translator/index.js";
-import crypto from "crypto";
+
+// Re-export from translator/utils for backward compatibility
+export { generateProjectId, wrapInAntigravityEnvelope } from "../translator/utils.js";
 
 /**
- * Generate a random project ID for Antigravity requests.
- * Format: {adjective}-{noun}-{random5chars}
- * Example: "useful-wave-a3f7e"
- */
-export function generateProjectId(): string {
-  const adjectives = ["useful", "bright", "swift", "calm", "bold"];
-  const nouns = ["fuze", "wave", "spark", "flow", "core"];
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const randomPart = crypto.randomUUID().toLowerCase().slice(0, 5);
-  return `${adj}-${noun}-${randomPart}`;
-}
-
-/**
+ * @deprecated Use translator system instead: registry.getRequestTranslator("openai-chat").toGemini()
+ * 
  * Result of transforming OpenAI request to Antigravity format
  */
 export interface TransformResult {
@@ -45,7 +46,13 @@ export interface TransformResult {
 }
 
 /**
+ * @deprecated Use translator system instead: registry.getRequestTranslator("openai-chat").toGemini()
+ * 
  * Transform OpenAI format request to Gemini/Antigravity format
+ * 
+ * This function is deprecated and kept only for backward compatibility.
+ * The translator system in server/translator/ provides the same functionality
+ * with better architecture and additional features like Antigravity identity injection.
  */
 export function transformOpenAIToGemini(request: OpenAIChatRequest): TransformResult {
   const model = resolveModelId(request.model);
@@ -249,64 +256,9 @@ export function transformOpenAIToGemini(request: OpenAIChatRequest): TransformRe
 }
 
 /**
- * Wrap Gemini request in Antigravity envelope
+ * @deprecated Moved to translator/openai-chat as a private method
+ * Get text content from OpenAI message
  */
-export function wrapInAntigravityEnvelope(
-  model: string,
-  geminiRequest: GeminiRequest,
-  projectId: string
-): AntigravityRequestBody {
-  const isClaude = getModelFamily(model) === "claude";
-
-  // Ensure systemInstruction has role set (required by Antigravity API)
-  if (geminiRequest.systemInstruction) {
-    geminiRequest.systemInstruction.role = "user";
-  }
-
-  // Use the sessionId already present in geminiRequest if available,
-  // otherwise generate a stable one or fallback to random.
-  // This ensures consistency between internal caching and external API calls.
-  const sessionId =
-    geminiRequest.sessionId ||
-    (geminiRequest.contents
-      ? generateStableSessionId(geminiRequest.contents)
-      : "-" + Math.floor(Math.random() * 1000000000000).toString());
-
-  // Always delete safetySettings
-  // safetySettings is a top-level property of geminiRequest
-  delete (geminiRequest as any).safetySettings;
-
-  // Always set toolConfig.functionCallingConfig.mode to VALIDATED
-  // This is crucial for stability regardless of whether tools are present
-  if (!geminiRequest.toolConfig) {
-    geminiRequest.toolConfig = {};
-  }
-  if (!geminiRequest.toolConfig.functionCallingConfig) {
-    geminiRequest.toolConfig.functionCallingConfig = {};
-  }
-  geminiRequest.toolConfig.functionCallingConfig.mode = "VALIDATED";
-
-  // For non-Claude models, delete maxOutputTokens
-  // This prevents rate limiting issues with Gemini models
-  if (!isClaude && geminiRequest.generationConfig) {
-    delete geminiRequest.generationConfig.maxOutputTokens;
-  }
-
-  return {
-    project: projectId,
-    model,
-    request: {
-      ...geminiRequest,
-      sessionId,
-    },
-    userAgent: "antigravity",
-    // Use 'agent-' prefix like CLIProxyAPI for better compatibility
-    requestId: `agent-${crypto.randomUUID()}`,
-    // requestType: 'agent' helps reduce 429 rate limiting
-    requestType: "agent",
-  };
-}
-
 function getTextContent(content: string | OpenAIMessage["content"]): string {
   if (typeof content === "string") {
     return content;
@@ -320,6 +272,10 @@ function getTextContent(content: string | OpenAIMessage["content"]): string {
   return "";
 }
 
+/**
+ * @deprecated Moved to translator/openai-chat as a private method
+ * Transform content to Gemini parts
+ */
 function transformContentToParts(
   content: string | OpenAIMessage["content"]
 ): GeminiPart[] {
@@ -358,6 +314,7 @@ function transformContentToParts(
 }
 
 /**
+ * @deprecated Moved to translator/openai-chat as a private method
  * Sanitize JSON Schema for Claude compatibility
  * Claude has stricter validation than OpenAI
  */

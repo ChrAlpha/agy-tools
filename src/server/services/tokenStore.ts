@@ -7,7 +7,7 @@ import {
 } from "../../shared/index.js";
 import type { Account, AccountIndex, ModelFamily } from "../../shared/index.js";
 import { refreshTokens, fetchQuota } from "./auth.js";
-import { generateProjectId } from "../utils/requestTransform.js";
+import { generateProjectId } from "../translator/utils.js";
 
 /**
  * Constants for quota backoff (matching CLIProxyAPI's approach).
