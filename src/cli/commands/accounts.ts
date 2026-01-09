@@ -28,8 +28,49 @@ export const accountsCommand = {
         : chalk.green("valid");
 
       logger.print(
-        `  ${chalk.cyan(account.id.slice(0, 8))}  ${account.email}  [${status}] [token: ${tokenStatus}]`
+        `  ${chalk.cyan(account.id.slice(0, 8))}  ${account.email}  [${status}] [token: ${tokenStatus}] [tier: ${account.tier || "FREE"}]`
       );
+
+      if (account.quota && account.quota.models.length > 0) {
+        const models = account.quota.models;
+
+        // logger.print(chalk.gray(`    Models:`));
+        // for (const m of models) {
+        //   logger.print(
+        //     chalk.gray(
+        //       `      - ${m.name}: ${m.percentage.toFixed(0)}% used`
+        //     )
+        //   );
+        // }
+
+        const groups: Record<string, { sum: number, count: number }> = {};
+
+        for (const m of models) {
+          let family = "";
+          if (m.name.includes("claude")) {
+            family = "Claude";
+          } else if (m.name.includes("gemini-3")) {
+            family = "Gemini 3";
+          } else if (m.name.includes("gemini-2.5")) {
+            family = "Gemini 2.5";
+          } else if (m.name.includes("gemini-1.5")) {
+            family = "Gemini 1.5";
+          }
+
+          if (family) {
+            if (!groups[family]) groups[family] = { sum: 0, count: 0 };
+            groups[family].sum += m.percentage;
+            groups[family].count += 1;
+          }
+        }
+
+        const quotaDisplay = Object.entries(groups)
+          .map(([name, data]) => `${name}: ${(data.sum / data.count).toFixed(0)}%`);
+
+        if (quotaDisplay.length > 0) {
+          logger.print(chalk.gray(`    Quota: ${quotaDisplay.join(" | ")}`));
+        }
+      }
 
       if (account.disabled && account.disabledReason) {
         logger.print(chalk.gray(`    Reason: ${account.disabledReason}`));
@@ -76,7 +117,8 @@ export const accountsCommand = {
         }
 
         await tokenStore.refreshAccount(account.id);
-        spinner.succeed(`Refreshed token for: ${account.email}`);
+        await tokenStore.refreshQuota(account.id);
+        spinner.succeed(`Refreshed token and quota for: ${account.email}`);
       } else {
         // Refresh all accounts
         let refreshed = 0;
@@ -85,6 +127,7 @@ export const accountsCommand = {
         for (const account of accounts) {
           try {
             await tokenStore.refreshAccount(account.id);
+            await tokenStore.refreshQuota(account.id);
             refreshed++;
           } catch {
             failed++;

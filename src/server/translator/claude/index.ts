@@ -36,7 +36,7 @@ import {
   getModelFamily,
   normalizeThinkingBudget,
 } from "../../../shared/index.js";
-import { thinkingCache } from "../../services/thinkingCache.js";
+import { thinkingCache, ThinkingCache } from "../../services/thinkingCache.js";
 
 // ============================================
 // Stream State
@@ -87,12 +87,24 @@ class ClaudeRequestTranslator implements RequestTranslator {
       const role = message.role === "assistant" ? "model" : "user";
       const parts: GeminiPart[] = [];
 
+      // 跟踪当前消息中的 thinking signature（用于 tool_use）
+      let currentMessageThinkingSignature: string | undefined;
+
       if (typeof message.content === "string") {
         parts.push({ text: message.content });
       } else if (Array.isArray(message.content)) {
         for (const part of message.content) {
-          const geminiPart = this.convertContentPart(part, options.sessionId, role === "model");
+          const geminiPart = this.convertContentPart(
+            part,
+            options.sessionId,
+            role === "model",
+            currentMessageThinkingSignature
+          );
           if (geminiPart) {
+            // 如果是 thinking part，更新当前消息的 signature
+            if (geminiPart.thought && geminiPart.thoughtSignature) {
+              currentMessageThinkingSignature = geminiPart.thoughtSignature;
+            }
             parts.push(geminiPart);
           }
         }
@@ -199,7 +211,8 @@ class ClaudeRequestTranslator implements RequestTranslator {
   private convertContentPart(
     part: ClaudeContentPart,
     sessionId: string,
-    isAssistant: boolean
+    isAssistant: boolean,
+    currentMessageThinkingSignature?: string
   ): GeminiPart | null {
     switch (part.type) {
       case "text":
@@ -211,12 +224,14 @@ class ClaudeRequestTranslator implements RequestTranslator {
         let signature = part.signature;
 
         // 尝试从缓存恢复签名
-        if (!signature && thinkingText) {
+        if (!ThinkingCache.isValidSignature(signature) && thinkingText) {
           signature = thinkingCache.get(sessionId, thinkingText);
         }
 
-        // 没有有效签名则跳过
-        if (!signature) return null;
+        // 没有有效签名则跳过（不要转换为 text，因为 Claude 要求 assistant 消息以 thinking 开头）
+        if (!ThinkingCache.isValidSignature(signature)) {
+          return null;
+        }
 
         return {
           thought: true,
@@ -226,7 +241,20 @@ class ClaudeRequestTranslator implements RequestTranslator {
 
       case "tool_use":
         if (!isAssistant) return null;
+
+        // 为 tool_use 添加 thoughtSignature
+        // 1. 优先使用当前消息中的 thinking signature
+        // 2. 如果没有，使用 skip sentinel 来绕过验证
+        let toolSignature: string;
+        if (ThinkingCache.isValidSignature(currentMessageThinkingSignature)) {
+          toolSignature = currentMessageThinkingSignature!;
+        } else {
+          // 使用 skip sentinel 绕过 Antigravity API 的签名验证
+          toolSignature = ThinkingCache.SKIP_SIGNATURE;
+        }
+
         return {
+          thoughtSignature: toolSignature,
           functionCall: {
             name: part.name || "",
             args: part.input || {},
@@ -652,7 +680,7 @@ class ClaudeResponseTranslator implements ResponseTranslator {
   }
 
   private formatClaudeSSE(event: string, data: unknown): string {
-    return `data: event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n\n`;
   }
 }
 

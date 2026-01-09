@@ -6,7 +6,7 @@ import {
   logger,
 } from "../../shared/index.js";
 import type { Account, AccountIndex, ModelFamily } from "../../shared/index.js";
-import { refreshTokens } from "./auth.js";
+import { refreshTokens, fetchQuota } from "./auth.js";
 
 class TokenStore {
   private accounts: Account[] = [];
@@ -118,6 +118,26 @@ class TokenStore {
         error instanceof Error ? error.message : "Token refresh failed";
       this.save();
       throw error;
+    }
+  }
+
+  async refreshQuota(id: string): Promise<void> {
+    await this.load();
+    const account = this.accounts.find((a) => a.id === id);
+    if (!account || !account.projectId) return;
+
+    try {
+      // Ensure token is valid before fetching quota
+      const now = Date.now();
+      if (account.tokens.expiresAt - now < 30000) {
+        await this.refreshAccount(id);
+      }
+
+      const quota = await fetchQuota(account.tokens.accessToken, account.projectId);
+      account.quota = quota;
+      this.save();
+    } catch (error) {
+      logger.warn(`Failed to refresh quota for ${account.email}:`, error);
     }
   }
 

@@ -9,9 +9,12 @@ import {
   OAUTH_SCOPES,
   OAUTH_REDIRECT_PORT,
   OAUTH_REDIRECT_URI,
+  ANTIGRAVITY_HEADERS,
+  ANTIGRAVITY_ENDPOINTS,
+  ENDPOINT_PRIORITY,
   logger,
 } from "../../shared/index.js";
-import type { Account, AntigravityTokens, OAuthState } from "../../shared/index.js";
+import type { Account, AntigravityTokens, OAuthState, QuotaData, ModelQuota } from "../../shared/index.js";
 import { tokenStore } from "./tokenStore.js";
 
 // ============================================
@@ -116,6 +119,7 @@ export async function refreshTokens(
     },
     body: new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -173,20 +177,16 @@ export async function fetchProjectIdAndTier(accessToken: string): Promise<{ proj
     "https://autopush-cloudcode-pa.sandbox.googleapis.com",
   ];
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
-    "Content-Type": "application/json",
-    "User-Agent": "google-api-nodejs-client/9.15.1",
-    "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
-    "Client-Metadata": '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}',
-  };
-
   for (const baseEndpoint of endpoints) {
     try {
       const url = `${baseEndpoint}/v1internal:loadCodeAssist`;
       const response = await fetch(url, {
         method: "POST",
-        headers,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          ...ANTIGRAVITY_HEADERS,
+        },
         body: JSON.stringify({
           metadata: {
             ideType: "IDE_UNSPECIFIED",
@@ -225,8 +225,88 @@ export async function fetchProjectIdAndTier(accessToken: string): Promise<{ proj
   return { projectId: "", tier: "FREE" };
 }
 
-// ============================================
-// OAuth Callback Server
+export async function fetchQuota(
+  accessToken: string,
+  projectId: string
+): Promise<QuotaData> {
+  const endpoints = ENDPOINT_PRIORITY.map((key) => ANTIGRAVITY_ENDPOINTS[key]);
+  let lastError: Error | null = null;
+
+  for (const baseEndpoint of endpoints) {
+    try {
+      const url = `${baseEndpoint}/v1internal:fetchAvailableModels`;
+      let response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          ...ANTIGRAVITY_HEADERS,
+        },
+        body: JSON.stringify({
+          project: projectId,
+        }),
+      });
+
+      // If 403 with projectId, try again without it (some accounts prefer empty body)
+      if (response.status === 403 && projectId) {
+        logger.debug(`Quota fetch forbidden with projectId on ${baseEndpoint}, retrying with empty body...`);
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            ...ANTIGRAVITY_HEADERS,
+          },
+          body: JSON.stringify({}),
+        });
+      }
+
+      if (response.status === 403) {
+        logger.debug(`Quota fetch still forbidden (403) on ${baseEndpoint}, skipping...`);
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Quota fetch failed: ${response.status}`);
+      }
+
+      const data = (await response.json()) as any;
+      const models: ModelQuota[] = [];
+
+      if (data.models && typeof data.models === "object") {
+        for (const [name, info] of Object.entries(data.models) as [string, any][]) {
+          if (info.quotaInfo && (name.includes("gemini") || name.includes("claude"))) {
+            models.push({
+              name,
+              percentage: info.quotaInfo.remainingFraction !== undefined
+                ? info.quotaInfo.remainingFraction * 100
+                : 100,
+              resetTime: info.quotaInfo.resetTime || "unknown",
+            });
+          }
+        }
+      }
+
+      return {
+        models,
+        lastUpdated: Date.now(),
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      logger.debug(`Failed to fetch quota from ${baseEndpoint}: ${lastError.message}`);
+    }
+  }
+
+  if (lastError) {
+    logger.warn(`Failed to fetch quota from all endpoints, last error: ${lastError.message}`);
+  }
+
+  return {
+    models: [],
+    lastUpdated: Date.now(),
+  };
+}
+
 // ============================================
 
 export async function startOAuthFlow(): Promise<{
@@ -306,12 +386,15 @@ function waitForOAuthCallback(): Promise<Account> {
           logger.warn("Could not retrieve Project ID from Antigravity. Using default.");
         }
 
+        const quota = await fetchQuota(tokens.accessToken, projectId || "rising-fact-p41fc");
+
         // Add account to store
         const account = await tokenStore.addAccount({
           email: userInfo.email,
           name: userInfo.name,
           projectId: projectId || "rising-fact-p41fc",
           tier,
+          quota,
           tokens,
         });
 

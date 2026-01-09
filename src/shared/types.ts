@@ -8,12 +8,25 @@ export interface AntigravityTokens {
   expiresAt: number; // Unix timestamp in ms
 }
 
+export interface ModelQuota {
+  name: string;
+  percentage: number;
+  resetTime: string;
+}
+
+export interface QuotaData {
+  models: ModelQuota[];
+  lastUpdated: number;
+  subscriptionTier?: string;
+}
+
 export interface Account {
   id: string;
   email: string;
   name?: string;
   projectId?: string;
   tier?: string;
+  quota?: QuotaData;
   tokens: AntigravityTokens;
   createdAt: number;
   lastUsedAt?: number;
@@ -42,7 +55,7 @@ export interface ProxyConfig {
   defaultEndpoint: AntigravityEndpoint;
 }
 
-export type AntigravityEndpoint = "daily" | "autopush" | "prod";
+export type AntigravityEndpoint = "daily" | "dailyNonSandbox" | "autopush" | "prod";
 
 export interface AppConfig {
   server: ServerConfig;

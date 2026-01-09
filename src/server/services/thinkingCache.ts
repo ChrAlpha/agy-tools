@@ -17,7 +17,7 @@ interface CacheEntry {
   timestamp: number;
 }
 
-class ThinkingCache {
+export class ThinkingCache {
   // sessionId -> (thinkingTextHash -> signature)
   private cache = new Map<string, Map<string, CacheEntry>>();
   private readonly TTL: number;
@@ -158,6 +158,30 @@ class ThinkingCache {
    */
   private hashText(text: string): string {
     return createHash("sha256").update(text).digest("hex").slice(0, 16);
+  }
+
+  /**
+   * 检查签名是否有效（非空且不是占位符）
+   * Based on CLIProxyAPI's HasValidSignature
+   */
+  static isValidSignature(signature: string | undefined | null): boolean {
+    if (!signature) return false;
+    // 过滤占位符签名
+    const placeholder = [
+      "placeholder",
+      "PLACEHOLDER",
+      "placeholder-signature",
+      "skip_thought_signature_validator",
+    ];
+    return !placeholder.includes(signature);
+  }
+
+  /**
+   * 获取用于跳过验证的特殊签名值
+   * 当没有有效签名时使用此值绕过 Antigravity API 验证
+   */
+  static get SKIP_SIGNATURE(): string {
+    return "skip_thought_signature_validator";
   }
 }
 

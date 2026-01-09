@@ -28,17 +28,19 @@ export const OAUTH_REDIRECT_URI = `http://127.0.0.1:${OAUTH_REDIRECT_PORT}/callb
 // Antigravity Endpoints
 // ============================================
 
-// Antigravity API endpoints (in fallback order) - based on antigravity-auth
+// Antigravity API endpoints (in fallback order) - based on CLIProxyAPI
 export const ANTIGRAVITY_ENDPOINTS: Record<AntigravityEndpoint, string> = {
   daily: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+  dailyNonSandbox: "https://daily-cloudcode-pa.googleapis.com",
   autopush: "https://autopush-cloudcode-pa.sandbox.googleapis.com",
   prod: "https://cloudcode-pa.googleapis.com",
 };
 
+// Priority order based on CLIProxyAPI's antigravityBaseURLFallbackOrder
 export const ENDPOINT_PRIORITY: AntigravityEndpoint[] = [
-  "daily",
-  "autopush",
-  "prod",
+  "daily",           // sandbox daily first
+  "dailyNonSandbox", // non-sandbox daily second
+  "prod",            // production last
 ];
 
 // Headers for Antigravity API
