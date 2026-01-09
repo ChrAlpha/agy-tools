@@ -197,6 +197,18 @@ class TokenStore {
   }
 
   /**
+   * Clear rate limit state for all accounts
+   */
+  async clearAllRateLimits(): Promise<void> {
+    await this.load();
+    for (const account of this.accounts) {
+      account.rateLimitedUntil = undefined;
+    }
+    this.save();
+    logger.debug("Cleared rate limits for all accounts");
+  }
+
+  /**
    * Mark an account as disabled (e.g., invalid_grant)
    */
   markDisabled(accountId: string, reason: string): void {

@@ -94,7 +94,7 @@ export const accountsCommand = {
 
         spinner.succeed(
           `Refreshed ${refreshed} account(s)` +
-            (failed > 0 ? `, ${failed} failed` : "")
+          (failed > 0 ? `, ${failed} failed` : "")
         );
       }
     } catch (error) {
@@ -102,5 +102,18 @@ export const accountsCommand = {
       logger.error("Error:", error);
       process.exit(1);
     }
+  },
+
+  async clearRateLimits(): Promise<void> {
+    await tokenStore.load();
+    const count = tokenStore.getAccounts().length;
+
+    if (count === 0) {
+      logger.info("No accounts found.");
+      return;
+    }
+
+    await tokenStore.clearAllRateLimits();
+    logger.success(`Cleared rate limits for all ${count} account(s).`);
   },
 };

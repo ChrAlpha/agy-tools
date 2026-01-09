@@ -41,6 +41,10 @@ cli
   .action(accountsCommand.refresh);
 
 cli
+  .command("accounts clear-rate-limits", "Clear rate limit state for all accounts")
+  .action(accountsCommand.clearRateLimits);
+
+cli
   .command("config", "Show current configuration")
   .action(configCommand.show);
 
