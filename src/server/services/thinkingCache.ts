@@ -17,6 +17,9 @@ interface CacheEntry {
   timestamp: number;
 }
 
+const MAX_ENTRIES_PER_SESSION = 100;
+const MIN_VALID_SIGNATURE_LENGTH = 50;
+
 export class ThinkingCache {
   // sessionId -> (thinkingTextHash -> signature)
   private cache = new Map<string, Map<string, CacheEntry>>();
@@ -58,10 +61,41 @@ export class ThinkingCache {
       return;
     }
 
+    // Validate signature length (防止缓存无效签名)
+    if (signature.length < MIN_VALID_SIGNATURE_LENGTH) {
+      logger.debug(`Signature too short (${signature.length} < ${MIN_VALID_SIGNATURE_LENGTH}), skipping cache`);
+      return;
+    }
+
     let sessionCache = this.cache.get(sessionId);
     if (!sessionCache) {
       sessionCache = new Map();
       this.cache.set(sessionId, sessionCache);
+    }
+
+    // LRU eviction: 当达到容量限制时，移除最旧的 25%
+    if (sessionCache.size >= MAX_ENTRIES_PER_SESSION) {
+      const now = Date.now();
+
+      // 首先尝试移除过期条目
+      for (const [hash, entry] of sessionCache) {
+        if (now - entry.timestamp > this.TTL) {
+          sessionCache.delete(hash);
+        }
+      }
+
+      // 如果仍然超出容量，按时间戳排序并移除最旧的 25%
+      if (sessionCache.size >= MAX_ENTRIES_PER_SESSION) {
+        const entries = Array.from(sessionCache.entries());
+        entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+
+        const toRemove = Math.max(1, Math.floor(entries.length / 4));
+        for (let i = 0; i < toRemove; i++) {
+          sessionCache.delete(entries[i][0]);
+        }
+
+        logger.debug(`LRU eviction: removed ${toRemove} oldest entries from session ${sessionId.slice(0, 8)}...`);
+      }
     }
 
     const hash = this.hashText(thinkingText);
@@ -70,7 +104,7 @@ export class ThinkingCache {
       timestamp: Date.now(),
     });
 
-    logger.debug(`Cached thinking signature for session ${sessionId.slice(0, 8)}...`);
+    logger.debug(`Cached thinking signature for session ${sessionId.slice(0, 8)}... (cache size: ${sessionCache.size})`);
   }
 
   /**

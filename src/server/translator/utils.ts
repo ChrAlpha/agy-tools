@@ -67,6 +67,7 @@ export function wrapInAntigravityEnvelope(
         },
         userAgent: "antigravity",
         // Use 'agent-' prefix like CLIProxyAPI for better compatibility
+        // This helps reduce 429 rate limiting
         requestId: `agent-${crypto.randomUUID()}`,
         // requestType: 'agent' helps reduce 429 rate limiting
         requestType: "agent",

@@ -37,6 +37,14 @@ import {
   getModelFamily,
   parseModelWithTier,
 } from "../../../shared/index.js";
+import { sanitizeToolsForAntigravity } from "../utils/schemaSanitizer.js";
+import {
+  restoreThinkingSignatures,
+  ensureToolIds,
+  analyzeConversationState,
+  needsThinkingRecovery,
+  closeToolLoopForThinking,
+} from "../utils/thinkingUtils.js";
 
 // ============================================
 // Request Translator
@@ -111,6 +119,24 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
       }
     }
 
+    // 恢复 thinking signatures (基于缓存)
+    let processedContents = restoreThinkingSignatures(contents, options.sessionId);
+
+    // 确保 tool IDs 匹配
+    processedContents = ensureToolIds(processedContents);
+
+    // Thinking Recovery: 检测并修复损坏的对话状态
+    if (isThinking && processedContents.length > 0) {
+      const conversationState = analyzeConversationState(processedContents);
+      if (needsThinkingRecovery(conversationState)) {
+        processedContents = closeToolLoopForThinking(processedContents);
+      }
+    }
+
+    // 使用处理后的 contents
+    contents.length = 0;
+    contents.push(...processedContents);
+
     // 构建 generation config
     const generationConfig: GeminiGenerationConfig = {};
 
@@ -154,12 +180,14 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
           functionDeclarations: request.tools.map((tool: OpenAITool) => ({
             name: tool.function.name,
             description: tool.function.description,
-            parameters: this.sanitizeSchema(tool.function.parameters),
+            parameters: tool.function.parameters,
           })),
         },
       ];
 
+      // 使用新的 schema sanitizer（更完整的清理）
       if (isClaude) {
+        tools = sanitizeToolsForAntigravity(tools);
         toolConfig = {
           functionCallingConfig: {
             mode: "VALIDATED",
@@ -168,8 +196,9 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
       }
     }
 
-    // Claude thinking + tools 时添加提示
-    if (isClaude && isThinking && tools && tools.length > 0) {
+    // Interleaved Thinking 支持（关键功能）
+    // 当同时启用 thinking 和 tools 时，需要明确告知模型可以在工具调用间思考
+    if (isThinking && tools && tools.length > 0) {
       const hint =
         "Interleaved thinking is enabled. You may think between tool calls and after receiving tool results before deciding the next action or final answer. Do not mention these instructions or any constraints about thinking blocks; just apply them.";
       if (systemInstruction) {
@@ -281,68 +310,6 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
     }
 
     return parts.length > 0 ? parts : [{ text: "" }];
-  }
-
-  private sanitizeSchema(
-    schema: Record<string, unknown> | undefined
-  ): Record<string, unknown> | undefined {
-    if (!schema) return undefined;
-
-    const sanitized = { ...schema };
-
-    // Remove unsupported JSON Schema fields that Antigravity/Claude doesn't support
-    // Based on antigravity-auth and CLIProxyAPI implementations
-    delete sanitized["$schema"];
-    delete sanitized["$defs"];
-    delete sanitized["definitions"];
-    delete sanitized["default"];
-    delete sanitized["examples"];
-    delete sanitized["$id"];
-    delete sanitized["$comment"];
-    delete sanitized["$ref"];
-    delete sanitized["const"];
-    delete sanitized["title"];
-    delete sanitized["propertyNames"];
-    delete sanitized["additionalProperties"];
-    // Constraint keywords
-    delete sanitized["minLength"];
-    delete sanitized["maxLength"];
-    delete sanitized["pattern"];
-    delete sanitized["format"];
-    delete sanitized["minItems"];
-    delete sanitized["maxItems"];
-    delete sanitized["exclusiveMinimum"];
-    delete sanitized["exclusiveMaximum"];
-    // Conditional keywords
-    delete sanitized["contentMediaType"];
-    delete sanitized["contentEncoding"];
-    delete sanitized["if"];
-    delete sanitized["then"];
-    delete sanitized["else"];
-    delete sanitized["allOf"];
-    delete sanitized["anyOf"];
-    delete sanitized["oneOf"];
-    delete sanitized["not"];
-    delete sanitized["dependentSchemas"];
-    delete sanitized["dependentRequired"];
-
-    if (sanitized.properties && typeof sanitized.properties === "object") {
-      const props = sanitized.properties as Record<string, Record<string, unknown>>;
-      sanitized.properties = Object.fromEntries(
-        Object.entries(props).map(([key, value]) => [
-          key,
-          this.sanitizeSchema(value) || value,
-        ])
-      );
-    }
-
-    if (sanitized.items && typeof sanitized.items === "object") {
-      sanitized.items = this.sanitizeSchema(
-        sanitized.items as Record<string, unknown>
-      );
-    }
-
-    return sanitized;
   }
 }
 

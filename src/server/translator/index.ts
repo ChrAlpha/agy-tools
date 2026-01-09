@@ -30,6 +30,12 @@ export {
 // 导出 Registry
 export { registry, registerTranslator, registerTranslatorPair } from "./registry.js";
 
+// 导出 schema sanitizer
+export {
+  cleanJSONSchemaForAntigravity,
+  sanitizeToolsForAntigravity
+} from "./utils/schemaSanitizer.js";
+
 // 导出 thinking 工具
 export {
   restoreThinkingSignatures,
@@ -37,6 +43,7 @@ export {
   ensureToolIds,
   analyzeConversationState,
   needsThinkingRecovery,
+  closeToolLoopForThinking,
   generateStableSessionId,
 } from "./utils/thinkingUtils.js";
 

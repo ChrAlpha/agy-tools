@@ -243,3 +243,68 @@ export function needsThinkingRecovery(state: ConversationState): boolean {
     state.hasPendingToolResults
   );
 }
+
+/**
+ * Thinking Recovery: "Let it crash and start again"
+ * 
+ * 当对话状态损坏时（thinking blocks 被破坏导致工具调用无 thinking），
+ * 注入合成消息关闭当前轮次，让 Claude 生成新的 thinking。
+ */
+export function closeToolLoopForThinking(contents: GeminiContent[]): GeminiContent[] {
+  if (contents.length === 0) {
+    return contents;
+  }
+
+  // 找到最后一个 model 消息
+  let lastModelIdx = -1;
+  for (let i = contents.length - 1; i >= 0; i--) {
+    if (contents[i].role === "model") {
+      lastModelIdx = i;
+      break;
+    }
+  }
+
+  if (lastModelIdx === -1) {
+    return contents;
+  }
+
+  // 检查是否有待处理的工具调用
+  const lastModelContent = contents[lastModelIdx];
+  const toolCallIds: string[] = [];
+
+  if (lastModelContent.parts) {
+    for (const part of lastModelContent.parts) {
+      if (part.functionCall?.id) {
+        toolCallIds.push(part.functionCall.id);
+      }
+    }
+  }
+
+  if (toolCallIds.length === 0) {
+    return contents;
+  }
+
+  // 为所有待处理的工具调用创建空响应
+  const syntheticResponses: GeminiContent = {
+    role: "user",
+    parts: toolCallIds.map((id) => ({
+      functionResponse: {
+        id,
+        name: "synthetic_close",
+        response: { status: "closed" },
+      },
+    })),
+  };
+
+  // 添加新用户消息重启对话
+  const restartMessage: GeminiContent = {
+    role: "user",
+    parts: [
+      {
+        text: "Please continue with your original task. Think through your approach before taking action.",
+      },
+    ],
+  };
+
+  return [...contents, syntheticResponses, restartMessage];
+}
