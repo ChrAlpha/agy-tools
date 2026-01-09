@@ -15,6 +15,7 @@ import {
   isClaudeThinkingModel,
   getModelFamily,
   parseModelWithTier,
+  normalizeThinkingBudget,
 } from "../../shared/index.js";
 
 /**
@@ -35,7 +36,11 @@ export function transformOpenAIToGemini(request: OpenAIChatRequest): TransformRe
   const modelInfo = getModelInfo(model);
   const isClaude = getModelFamily(model) === "claude";
   const isThinking = isClaudeThinkingModel(model);
-  const { thinkingBudget } = parseModelWithTier(model);
+  // Get thinking budget and normalize to model's supported range
+  const rawThinkingBudget = parseModelWithTier(model).thinkingBudget;
+  const thinkingBudget = rawThinkingBudget
+    ? normalizeThinkingBudget(model, rawThinkingBudget)
+    : undefined;
 
   const contents: GeminiContent[] = [];
   let systemInstruction: { parts: Array<{ text: string }> } | undefined;

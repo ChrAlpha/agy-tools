@@ -34,6 +34,7 @@ import {
   getModelInfo,
   isClaudeThinkingModel,
   getModelFamily,
+  normalizeThinkingBudget,
 } from "../../../shared/index.js";
 import { thinkingCache } from "../../services/thinkingCache.js";
 
@@ -64,7 +65,11 @@ class ClaudeRequestTranslator implements RequestTranslator {
     const modelInfo = getModelInfo(model);
     const isClaude = getModelFamily(model) === "claude";
     const isThinking = isClaudeThinkingModel(model);
-    const thinkingBudget = request.thinking?.budget_tokens;
+    // Normalize thinking budget to model's supported range
+    const rawThinkingBudget = request.thinking?.budget_tokens;
+    const thinkingBudget = rawThinkingBudget
+      ? normalizeThinkingBudget(model, rawThinkingBudget)
+      : undefined;
 
     const contents: GeminiContent[] = [];
     let systemInstruction: { parts: Array<{ text: string }> } | undefined;

@@ -37,6 +37,7 @@ import {
   isClaudeThinkingModel,
   getModelFamily,
   parseModelWithTier,
+  normalizeThinkingBudget,
 } from "../../../shared/index.js";
 
 // ============================================
@@ -67,13 +68,15 @@ interface ResponsesStreamState {
 // ============================================
 
 function reasoningEffortToThinkingBudget(effort?: string): number | undefined {
+  // These are base values, will be normalized by normalizeThinkingBudget
+  // to fit within model-specific limits
   switch (effort) {
     case "low":
       return 1024;
     case "medium":
       return 10240;
     case "high":
-      return 32768;
+      return 24576; // Capped at Gemini 2.5 max for safety
     default:
       return undefined;
   }
@@ -91,9 +94,12 @@ class OpenAIResponsesRequestTranslator implements RequestTranslator {
     const isClaude = getModelFamily(model) === "claude";
     const isThinking = isClaudeThinkingModel(model);
 
-    // 从 reasoning.effort 推导 thinking budget
-    const thinkingBudget = reasoningEffortToThinkingBudget(request.reasoning?.effort) ||
+    // 从 reasoning.effort 推导 thinking budget，并规范化到模型支持的范围
+    const rawThinkingBudget = reasoningEffortToThinkingBudget(request.reasoning?.effort) ||
       parseModelWithTier(model).thinkingBudget;
+    const thinkingBudget = rawThinkingBudget
+      ? normalizeThinkingBudget(model, rawThinkingBudget)
+      : undefined;
 
     const contents: GeminiContent[] = [];
     let systemInstruction: { parts: Array<{ text: string }> } | undefined;

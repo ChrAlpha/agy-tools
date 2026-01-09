@@ -59,12 +59,55 @@ export const GEMINI_CLI_HEADERS = {
 // Model Definitions
 // ============================================
 
-// Thinking budget tiers (based on antigravity-auth)
+// Thinking budget tiers
+// Note: Different models have different max budgets:
+// - Gemini 2.5 models: max 24576
+// - Claude models: max 200000
+// We use conservative defaults that work across models
 export const THINKING_BUDGETS = {
   low: 8192,
   medium: 16384,
-  high: 32768,
+  high: 24576, // Capped at Gemini max to ensure compatibility
 } as const;
+
+// Model-specific thinking budget limits
+export const MODEL_THINKING_LIMITS: Record<string, { min: number; max: number }> = {
+  // Gemini 2.5 models
+  "gemini-2.5-flash": { min: 0, max: 24576 },
+  "gemini-2.5-flash-lite": { min: 0, max: 24576 },
+  "gemini-2.5-flash-thinking": { min: 0, max: 24576 },
+  "gemini-2.5-pro": { min: 0, max: 24576 },
+  // Gemini 3 models
+  "gemini-3-pro": { min: 128, max: 32768 },
+  "gemini-3-pro-preview": { min: 128, max: 32768 },
+  "gemini-3-pro-low": { min: 128, max: 32768 },
+  "gemini-3-pro-high": { min: 128, max: 32768 },
+  "gemini-3-flash": { min: 128, max: 32768 },
+  // Claude models (via Antigravity)
+  "claude-sonnet-4-5-thinking": { min: 1024, max: 200000 },
+  "claude-opus-4-5-thinking": { min: 1024, max: 200000 },
+};
+
+/**
+ * Normalize thinking budget to model's supported range
+ */
+export function normalizeThinkingBudget(modelId: string, budget: number): number {
+  const baseModel = getBaseModelId(modelId);
+  const limits = MODEL_THINKING_LIMITS[baseModel];
+
+  if (!limits) {
+    // Unknown model, return as-is but cap at safe default
+    return Math.min(budget, 24576);
+  }
+
+  if (budget < limits.min) {
+    return limits.min;
+  }
+  if (budget > limits.max) {
+    return limits.max;
+  }
+  return budget;
+}
 
 export type ThinkingLevel = "none" | "low" | "medium" | "high";
 
