@@ -4,6 +4,7 @@ import { loginCommand } from "./commands/login.js";
 import { accountsCommand } from "./commands/accounts.js";
 import { configCommand } from "./commands/config.js";
 import { modelsCommand } from "./commands/models.js";
+import { codeCommand } from "./commands/code.js";
 import { setLogLevel } from "../shared/logger.js";
 
 const cli = cac("agy-tools");
@@ -59,6 +60,13 @@ cli
 cli
   .command("models", "List all available models")
   .action(modelsCommand);
+
+cli
+  .command("code <agent> [...args]", "Launch a coding agent with agy-tools proxy")
+  .option("-p, --port <port>", "Server port (random if not specified)")
+  .option("-H, --host <host>", "Server host", { default: "127.0.0.1" })
+  .option("-k, --api-key <key>", "API key for authentication (random if not specified)")
+  .action(codeCommand);
 
 // Help and version
 cli.help();
