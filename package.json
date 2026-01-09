@@ -1,6 +1,6 @@
 {
   "name": "agy-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Antigravity API reverse proxy with multi-account management",
   "type": "module",
   "main": "./dist/bin/agy-tools.js",
