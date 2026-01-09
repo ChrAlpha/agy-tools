@@ -130,11 +130,22 @@ class TokenStore {
   ): Promise<{ token: string; accountId: string; projectId: string } | null> {
     await this.load();
 
-    const eligibleAccounts = this.accounts.filter(
-      (a) =>
-        !a.disabled &&
-        (!a.rateLimitedUntil || a.rateLimitedUntil < Date.now())
-    );
+    const getTierPriority = (tier: string | undefined): number => {
+      switch (tier) {
+        case "ULTRA": return 0;
+        case "PRO": return 1;
+        case "FREE": return 2;
+        default: return 3;
+      }
+    };
+
+    const eligibleAccounts = this.accounts
+      .filter(
+        (a) =>
+          !a.disabled &&
+          (!a.rateLimitedUntil || a.rateLimitedUntil < Date.now())
+      )
+      .sort((a, b) => getTierPriority(a.tier) - getTierPriority(b.tier));
 
     if (eligibleAccounts.length === 0) {
       return null;

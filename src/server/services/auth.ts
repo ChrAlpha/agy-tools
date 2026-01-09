@@ -131,12 +131,13 @@ export async function refreshTokens(
 
   const data = (await response.json()) as {
     access_token: string;
+    refresh_token?: string;
     expires_in: number;
   };
 
   return {
     accessToken: data.access_token,
-    refreshToken, // Refresh token doesn't change
+    refreshToken: data.refresh_token || refreshToken,
     expiresAt: Date.now() + data.expires_in * 1000,
   };
 }
@@ -165,7 +166,7 @@ export async function fetchUserInfo(
 /**
  * Fetch Antigravity project ID from loadCodeAssist endpoint
  */
-export async function fetchProjectId(accessToken: string): Promise<string> {
+export async function fetchProjectIdAndTier(accessToken: string): Promise<{ projectId: string, tier: string }> {
   const endpoints = [
     "https://cloudcode-pa.googleapis.com",
     "https://daily-cloudcode-pa.sandbox.googleapis.com",
@@ -200,22 +201,28 @@ export async function fetchProjectId(accessToken: string): Promise<string> {
       }
 
       const data = (await response.json()) as any;
+      let projectId = "";
       if (typeof data.cloudaicompanionProject === "string" && data.cloudaicompanionProject) {
-        return data.cloudaicompanionProject;
-      }
-      if (
+        projectId = data.cloudaicompanionProject;
+      } else if (
         data.cloudaicompanionProject &&
         typeof data.cloudaicompanionProject.id === "string" &&
         data.cloudaicompanionProject.id
       ) {
-        return data.cloudaicompanionProject.id;
+        projectId = data.cloudaicompanionProject.id;
+      }
+
+      const tierId = data.paidTier?.id ?? data.currentTier?.id ?? "FREE";
+
+      if (projectId) {
+        return { projectId, tier: tierId };
       }
     } catch {
       // Continue to next endpoint
     }
   }
 
-  return "";
+  return { projectId: "", tier: "FREE" };
 }
 
 // ============================================
@@ -292,19 +299,19 @@ function waitForOAuthCallback(): Promise<Account> {
         // Fetch user info
         const userInfo = await fetchUserInfo(tokens.accessToken);
 
-        // Fetch project ID
-        let projectId = await fetchProjectId(tokens.accessToken);
+        // Fetch project ID and Tier
+        const { projectId, tier } = await fetchProjectIdAndTier(tokens.accessToken);
         if (!projectId) {
-            // Fallback to a default if retrieval fails, or log warning
-            logger.warn("Could not retrieve Project ID from Antigravity. Using default.");
-            projectId = "rising-fact-p41fc"; // Default from antigravity-auth
+          // Fallback to a default if retrieval fails, or log warning
+          logger.warn("Could not retrieve Project ID from Antigravity. Using default.");
         }
 
         // Add account to store
         const account = await tokenStore.addAccount({
           email: userInfo.email,
           name: userInfo.name,
-          projectId,
+          projectId: projectId || "rising-fact-p41fc",
+          tier,
           tokens,
         });
 

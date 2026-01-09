@@ -13,6 +13,7 @@ export interface Account {
   email: string;
   name?: string;
   projectId?: string;
+  tier?: string;
   tokens: AntigravityTokens;
   createdAt: number;
   lastUsedAt?: number;

@@ -13,6 +13,7 @@ import {
 import { AntigravityClient } from "./AntigravityClient.js";
 import { AccountManager } from "./AccountManager.js";
 import { logger } from "../../shared/logger.js";
+import { parseRetryDelay } from "../utils/errorParser.js";
 
 /**
  * 生成唯一的会话 ID
@@ -107,13 +108,14 @@ export class ProxyService {
         if (error.message.includes("429") || error.message.includes("RESOURCE_EXHAUSTED")) {
           logger.warn(`Rate limit encountered for account ${accountId}. Switching account...`);
 
-          // Mark current account as rate limited (default 1 min)
-          this.accountManager.markRateLimited(accountId);
+          // Parse actual retry delay if available, otherwise default to 1 min
+          const retryDelay = parseRetryDelay(error.message) || 60000;
+          this.accountManager.markRateLimited(accountId, retryDelay);
 
           // Try to get next account
           accountInfo = await this.accountManager.getAccessToken();
           if (!accountInfo) {
-             throw new Error("No more available accounts after rate limit");
+            throw new Error("No more available accounts after rate limit");
           }
           continue; // Retry with new account
         }
@@ -123,7 +125,7 @@ export class ProxyService {
     }
 
     if (!geminiResponse) {
-        throw new Error("Failed to generate content after retries");
+      throw new Error("Failed to generate content after retries");
     }
 
     // 缓存 thinking 签名
@@ -237,8 +239,9 @@ export class ProxyService {
           if (error.message.includes("429") || error.message.includes("RESOURCE_EXHAUSTED")) {
             logger.warn(`Rate limit encountered (stream) for account ${accountId}. Switching account...`);
 
-            // Mark current account as rate limited
-            this.accountManager.markRateLimited(accountId);
+            // Parse actual retry delay if available, otherwise default to 1 min
+            const retryDelay = parseRetryDelay(error.message) || 60000;
+            this.accountManager.markRateLimited(accountId, retryDelay);
 
             // Try to get next account
             accountInfo = await this.accountManager.getAccessToken();
