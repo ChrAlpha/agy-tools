@@ -9,7 +9,7 @@ export const accountsCommand = {
     const accounts = tokenStore.getAccounts();
 
     if (accounts.length === 0) {
-      logger.info("No accounts found. Use 'agy login' to add an account.");
+      logger.info("No accounts found. Use 'agy-tools login' to add an account.");
       return;
     }
 
