@@ -281,11 +281,28 @@ class ClaudeRequestTranslator implements RequestTranslator {
     if (!schema) return undefined;
 
     const sanitized = { ...schema };
+    // Remove unsupported JSON Schema fields that Antigravity/Claude doesn't support
     delete sanitized["$schema"];
+    delete sanitized["$defs"];
+    delete sanitized["definitions"];
     delete sanitized["default"];
     delete sanitized["examples"];
     delete sanitized["$id"];
     delete sanitized["$comment"];
+    delete sanitized["$ref"];
+    delete sanitized["const"];
+    delete sanitized["title"];
+    delete sanitized["propertyNames"];
+    delete sanitized["additionalProperties"];
+    // Constraint keywords
+    delete sanitized["minLength"];
+    delete sanitized["maxLength"];
+    delete sanitized["pattern"];
+    delete sanitized["format"];
+    delete sanitized["minItems"];
+    delete sanitized["maxItems"];
+    delete sanitized["exclusiveMinimum"];
+    delete sanitized["exclusiveMaximum"];
 
     if (sanitized.properties && typeof sanitized.properties === "object") {
       const props = sanitized.properties as Record<string, Record<string, unknown>>;

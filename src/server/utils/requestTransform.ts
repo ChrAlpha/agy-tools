@@ -305,12 +305,29 @@ function sanitizeSchema(
 
   const sanitized = { ...schema };
 
-  // Remove unsupported fields
+  // Remove unsupported JSON Schema fields that Antigravity/Claude doesn't support
+  // Based on antigravity-auth and CLIProxyAPI implementations
   delete sanitized["$schema"];
+  delete sanitized["$defs"];
+  delete sanitized["definitions"];
   delete sanitized["default"];
   delete sanitized["examples"];
   delete sanitized["$id"];
   delete sanitized["$comment"];
+  delete sanitized["$ref"];
+  delete sanitized["const"];
+  delete sanitized["title"];
+  delete sanitized["propertyNames"];
+  delete sanitized["additionalProperties"];
+  // Constraint keywords
+  delete sanitized["minLength"];
+  delete sanitized["maxLength"];
+  delete sanitized["pattern"];
+  delete sanitized["format"];
+  delete sanitized["minItems"];
+  delete sanitized["maxItems"];
+  delete sanitized["exclusiveMinimum"];
+  delete sanitized["exclusiveMaximum"];
 
   // Recursively sanitize nested objects
   if (sanitized.properties && typeof sanitized.properties === "object") {
@@ -326,13 +343,6 @@ function sanitizeSchema(
   if (sanitized.items && typeof sanitized.items === "object") {
     sanitized.items = sanitizeSchema(
       sanitized.items as Record<string, unknown>
-    );
-  }
-
-  // Handle additionalProperties
-  if (sanitized.additionalProperties && typeof sanitized.additionalProperties === "object") {
-    sanitized.additionalProperties = sanitizeSchema(
-      sanitized.additionalProperties as Record<string, unknown>
     );
   }
 

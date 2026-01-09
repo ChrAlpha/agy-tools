@@ -250,15 +250,30 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
 
     const sanitized = { ...schema };
 
-    // Remove OpenAI/Anthropic-specific JSON Schema fields that Gemini doesn't support
+    // Remove unsupported JSON Schema fields that Antigravity/Claude doesn't support
+    // Based on antigravity-auth and CLIProxyAPI implementations
     delete sanitized["$schema"];
+    delete sanitized["$defs"];
+    delete sanitized["definitions"];
     delete sanitized["default"];
     delete sanitized["examples"];
     delete sanitized["$id"];
     delete sanitized["$comment"];
+    delete sanitized["$ref"];
+    delete sanitized["const"];
+    delete sanitized["title"];
+    delete sanitized["propertyNames"];
+    delete sanitized["additionalProperties"];
+    // Constraint keywords
+    delete sanitized["minLength"];
+    delete sanitized["maxLength"];
+    delete sanitized["pattern"];
+    delete sanitized["format"];
+    delete sanitized["minItems"];
+    delete sanitized["maxItems"];
     delete sanitized["exclusiveMinimum"];
     delete sanitized["exclusiveMaximum"];
-    delete sanitized["const"];
+    // Conditional keywords
     delete sanitized["contentMediaType"];
     delete sanitized["contentEncoding"];
     delete sanitized["if"];
@@ -270,8 +285,6 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
     delete sanitized["not"];
     delete sanitized["dependentSchemas"];
     delete sanitized["dependentRequired"];
-    delete sanitized["$defs"];
-    delete sanitized["definitions"];
 
     if (sanitized.properties && typeof sanitized.properties === "object") {
       const props = sanitized.properties as Record<string, Record<string, unknown>>;
@@ -286,12 +299,6 @@ class OpenAIChatRequestTranslator implements RequestTranslator {
     if (sanitized.items && typeof sanitized.items === "object") {
       sanitized.items = this.sanitizeSchema(
         sanitized.items as Record<string, unknown>
-      );
-    }
-
-    if (sanitized.additionalProperties && typeof sanitized.additionalProperties === "object") {
-      sanitized.additionalProperties = this.sanitizeSchema(
-        sanitized.additionalProperties as Record<string, unknown>
       );
     }
 
@@ -322,10 +329,10 @@ class OpenAIChatResponseTranslator implements ResponseTranslator {
       choices,
       usage: response.usageMetadata
         ? {
-            prompt_tokens: response.usageMetadata.promptTokenCount || 0,
-            completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
-            total_tokens: response.usageMetadata.totalTokenCount || 0,
-          }
+          prompt_tokens: response.usageMetadata.promptTokenCount || 0,
+          completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
+          total_tokens: response.usageMetadata.totalTokenCount || 0,
+        }
         : undefined,
     };
   }
