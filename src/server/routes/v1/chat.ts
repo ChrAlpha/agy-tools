@@ -21,7 +21,7 @@ export async function chatCompletions(c: Context) {
     }
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error(err, "Error in chatCompletions");
+    logger.error("Error in chatCompletions", err.message);
     return c.json(
       {
         error: {
@@ -51,7 +51,7 @@ export async function responses(c: Context) {
     }
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error(err, "Error in responses");
+    logger.error("Error in responses", err.message);
     return c.json(
       {
         error: {
@@ -83,7 +83,7 @@ export async function claudeMessages(c: Context) {
     }
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error(err, "Error in claudeMessages");
+    logger.error("Error in claudeMessages", err.message);
 
     // Claude API 错误格式
     return c.json(

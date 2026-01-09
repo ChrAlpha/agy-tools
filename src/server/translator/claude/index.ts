@@ -16,7 +16,6 @@ import type {
 } from "../types.js";
 import type {
   ClaudeRequest,
-  ClaudeMessage,
   ClaudeContentPart,
   ClaudeResponse,
   ClaudeResponseContent,

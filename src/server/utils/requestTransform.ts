@@ -18,13 +18,21 @@ import {
   normalizeThinkingBudget,
 } from "../../shared/index.js";
 import { generateStableSessionId } from "../translator/index.js";
-import {
-  ANTIGRAVITY_HEADERS,
-  ANTIGRAVITY_ENDPOINTS,
-  ENDPOINT_PRIORITY,
-  loadConfig,
-} from "../../shared/index.js";
 import crypto from "crypto";
+
+/**
+ * Generate a random project ID for Antigravity requests.
+ * Format: {adjective}-{noun}-{random5chars}
+ * Example: "useful-wave-a3f7e"
+ */
+export function generateProjectId(): string {
+  const adjectives = ["useful", "bright", "swift", "calm", "bold"];
+  const nouns = ["fuze", "wave", "spark", "flow", "core"];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const randomPart = crypto.randomUUID().toLowerCase().slice(0, 5);
+  return `${adj}-${noun}-${randomPart}`;
+}
 
 /**
  * Result of transforming OpenAI request to Antigravity format
@@ -190,10 +198,11 @@ export function transformOpenAIToGemini(request: OpenAIChatRequest): TransformRe
 
   // [Antigravity Identity Injection]
   // Inject Antigravity identity to improve compatibility and reduce 429 rate limiting
-  const antigravityIdentity = `You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.
-You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.
-**Absolute paths only**
-**Proactiveness**`;
+  // Based on CLIProxyAPI's systemInstruction implementation (lines 1105-1116)
+  const antigravityIdentity = `You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.**Absolute paths only****Proactiveness**`;
+
+  // Ignore marker to confuse potential filtering (matching CLIProxyAPI pattern)
+  const antigravityIgnore = `Please ignore following [ignore]${antigravityIdentity}[/ignore]`;
 
   // Check if user already has Antigravity identity in systemInstruction
   let userHasAntigravity = false;
@@ -207,14 +216,23 @@ You are pair programming with a USER to solve their coding task. The task may re
   }
 
   // If user doesn't have Antigravity identity, inject it
+  // Use the same multi-part pattern as CLIProxyAPI (lines 1107-1115)
   if (!userHasAntigravity) {
     if (systemInstruction?.parts) {
-      // Insert Antigravity identity at the beginning
-      systemInstruction.parts.unshift({ text: antigravityIdentity });
+      // Insert at beginning: first the identity, then the ignore marker, then user content
+      const userParts = [...systemInstruction.parts];
+      systemInstruction.parts = [
+        { text: antigravityIdentity },
+        { text: antigravityIgnore },
+        ...userParts,
+      ];
     } else {
       // No systemInstruction, create a new one
       systemInstruction = {
-        parts: [{ text: antigravityIdentity }],
+        parts: [
+          { text: antigravityIdentity },
+          { text: antigravityIgnore },
+        ],
       };
     }
   }
@@ -238,6 +256,8 @@ export function wrapInAntigravityEnvelope(
   geminiRequest: GeminiRequest,
   projectId: string
 ): AntigravityRequestBody {
+  const isClaude = getModelFamily(model) === "claude";
+
   // Ensure systemInstruction has role set (required by Antigravity API)
   if (geminiRequest.systemInstruction) {
     geminiRequest.systemInstruction.role = "user";
@@ -251,6 +271,26 @@ export function wrapInAntigravityEnvelope(
     (geminiRequest.contents
       ? generateStableSessionId(geminiRequest.contents)
       : "-" + Math.floor(Math.random() * 1000000000000).toString());
+
+  // Always delete safetySettings
+  // safetySettings is a top-level property of geminiRequest
+  delete (geminiRequest as any).safetySettings;
+
+  // Always set toolConfig.functionCallingConfig.mode to VALIDATED
+  // This is crucial for stability regardless of whether tools are present
+  if (!geminiRequest.toolConfig) {
+    geminiRequest.toolConfig = {};
+  }
+  if (!geminiRequest.toolConfig.functionCallingConfig) {
+    geminiRequest.toolConfig.functionCallingConfig = {};
+  }
+  geminiRequest.toolConfig.functionCallingConfig.mode = "VALIDATED";
+
+  // For non-Claude models, delete maxOutputTokens
+  // This prevents rate limiting issues with Gemini models
+  if (!isClaude && geminiRequest.generationConfig) {
+    delete geminiRequest.generationConfig.maxOutputTokens;
+  }
 
   return {
     project: projectId,

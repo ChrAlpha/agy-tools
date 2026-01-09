@@ -4,22 +4,25 @@ import { logger } from "../../shared/logger.js";
 
 /**
  * AccountManager handles selecting and rotating accounts for API requests.
- * Uses round-robin strategy with rate-limit awareness.
+ * Uses round-robin strategy with per-model rate-limit awareness.
+ * Based on CLIProxyAPI's auth conductor/selector pattern.
  */
 export class AccountManager {
   /**
    * Get a valid access token for API requests.
    * Automatically handles token refresh and account rotation.
+   * Now supports per-model rate limit filtering.
    */
   async getAccessToken(
-    family: ModelFamily = "gemini"
+    family: ModelFamily = "gemini",
+    model?: string
   ): Promise<{ token: string; projectId: string; accountId: string } | null> {
     await tokenStore.load();
 
-    const result = await tokenStore.getValidAccessToken(family);
+    const result = await tokenStore.getValidAccessToken(family, model);
 
     if (!result) {
-      logger.warn("No valid account available for API requests");
+      logger.warn(`No valid account available for model ${model || "unknown"}`);
       return null;
     }
 
@@ -31,11 +34,20 @@ export class AccountManager {
   }
 
   /**
-   * Mark the last used account as rate-limited.
+   * Mark the last used account as rate-limited for a specific model.
    * Called when API returns 429 error.
+   * Uses exponential backoff for repeated failures.
    */
-  markRateLimited(accountId: string, retryAfterMs: number = 60000): void {
-    tokenStore.markRateLimited(accountId, retryAfterMs);
+  markRateLimited(accountId: string, retryAfterMs: number = 60000, model?: string): void {
+    tokenStore.markRateLimited(accountId, retryAfterMs, model);
+  }
+
+  /**
+   * Mark a successful request for an account and model.
+   * Resets the per-model rate limit state and backoff level.
+   */
+  markSuccess(accountId: string, model?: string): void {
+    tokenStore.markSuccess(accountId, model);
   }
 
   /**

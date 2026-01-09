@@ -57,11 +57,20 @@ export class AntigravityClient {
           body: JSON.stringify(wrappedRequest),
         });
 
-        // On 429 rate limit, try next endpoint if available
-        if (response.status === 429 && i + 1 < endpoints.length) {
+        // Handle rate limiting (429) and server errors (500, 503, 529)
+        // These errors should trigger endpoint fallback
+        if (
+          (response.status === 429 ||
+            response.status === 500 ||
+            response.status === 503 ||
+            response.status === 529) &&
+          i + 1 < endpoints.length
+        ) {
+          const errorText = await response.text().catch(() => "");
           logger.debug(
-            `Rate limited on ${baseUrl}, retrying with fallback: ${endpoints[i + 1]}`
+            `Error ${response.status} on ${baseUrl}, retrying with fallback: ${endpoints[i + 1]}`
           );
+          logger.debug(`Error details: ${errorText.slice(0, 200)}`);
           continue;
         }
 
@@ -114,11 +123,20 @@ export class AntigravityClient {
           body: JSON.stringify(wrappedRequest),
         });
 
-        // On 429 rate limit, try next endpoint if available
-        if (response.status === 429 && i + 1 < endpoints.length) {
+        // Handle rate limiting (429) and server errors (500, 503, 529)
+        // These errors should trigger endpoint fallback
+        if (
+          (response.status === 429 ||
+            response.status === 500 ||
+            response.status === 503 ||
+            response.status === 529) &&
+          i + 1 < endpoints.length
+        ) {
+          const errorText = await response.text().catch(() => "");
           logger.debug(
-            `Rate limited on ${baseUrl}, retrying with fallback: ${endpoints[i + 1]}`
+            `Error ${response.status} on ${baseUrl}, retrying with fallback: ${endpoints[i + 1]}`
           );
+          logger.debug(`Error details: ${errorText.slice(0, 200)}`);
           continue;
         }
 

@@ -1,15 +1,6 @@
 import { MODELS } from "../../shared/index.js";
 import { logger } from "../../shared/logger.js";
 
-interface ModelDisplayInfo {
-  id: string;
-  name: string;
-  family: string;
-  contextWindow: string;
-  maxOutputTokens: string;
-  features: string[];
-}
-
 export async function modelsCommand(): Promise<void> {
   logger.info("Available Models:");
   logger.info("");

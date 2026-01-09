@@ -78,6 +78,7 @@ export class ProxyService {
 
   /**
    * 处理非流式请求
+   * Uses model-aware account selection and tracks success/failure per model.
    */
   async handleRequest(
     body: unknown,
@@ -86,10 +87,12 @@ export class ProxyService {
     const { geminiRequest, model, options, sessionId, responseTranslator } =
       this.prepareRequest(body, format, false);
 
-    // 获取有效 token
-    let accountInfo = await this.accountManager.getAccessToken();
+    // 获取有效 token (now with model-aware filtering)
+    let accountInfo = await this.accountManager.getAccessToken("gemini", model);
     if (!accountInfo) {
-      throw new Error("No available accounts/tokens");
+      logger.error(`No available accounts/tokens for model ${model}`);
+      logger.error("Run 'agy-tools accounts list' to see account details");
+      throw new Error(`No available accounts/tokens for model ${model}`);
     }
 
     let geminiResponse;
@@ -108,6 +111,9 @@ export class ProxyService {
           token,
           projectId
         );
+
+        // Mark success to reset backoff level for this model
+        this.accountManager.markSuccess(accountId, model);
         break; // Success
       } catch (err: unknown) {
         const error = err instanceof Error ? err : new Error(String(err));
@@ -118,17 +124,17 @@ export class ProxyService {
           error.message.includes("RESOURCE_EXHAUSTED")
         ) {
           logger.warn(
-            `Rate limit encountered for account ${accountId}. Switching account...`
+            `Rate limit encountered for account ${accountId} on model ${model}. Switching account...`
           );
 
-          // Parse actual retry delay if available, otherwise default to 1 min
-          const retryDelay = parseRetryDelay(error.message) || 60000;
-          this.accountManager.markRateLimited(accountId, retryDelay);
+          // Parse actual retry delay if available, otherwise let markRateLimited use exponential backoff
+          const retryDelay = parseRetryDelay(error.message);
+          this.accountManager.markRateLimited(accountId, retryDelay || 60000, model);
 
-          // Try to get next account
-          accountInfo = await this.accountManager.getAccessToken();
+          // Try to get next account (model-aware)
+          accountInfo = await this.accountManager.getAccessToken("gemini", model);
           if (!accountInfo) {
-            throw new Error("No more available accounts after rate limit");
+            throw new Error(`No more available accounts for model ${model} after rate limit`);
           }
           continue; // Retry with new account
         }
@@ -138,7 +144,7 @@ export class ProxyService {
     }
 
     if (!geminiResponse) {
-      throw new Error("Failed to generate content after retries");
+      throw new Error(`Failed to generate content for model ${model} after retries`);
     }
 
     // 缓存 thinking 签名
@@ -150,6 +156,7 @@ export class ProxyService {
 
   /**
    * 处理流式请求
+   * Uses model-aware account selection and tracks success/failure per model.
    */
   async handleStreamRequest(
     c: Context,
@@ -159,10 +166,10 @@ export class ProxyService {
     const { geminiRequest, model, options, sessionId, responseTranslator } =
       this.prepareRequest(body, format, true);
 
-    // 获取有效 token
-    let accountInfo = await this.accountManager.getAccessToken();
+    // 获取有效 token (now with model-aware filtering)
+    let accountInfo = await this.accountManager.getAccessToken("gemini", model);
     if (!accountInfo) {
-      throw new Error("No available accounts/tokens");
+      throw new Error(`No available accounts/tokens for model ${model}`);
     }
 
     // 创建流式上下文
@@ -227,6 +234,8 @@ export class ProxyService {
             }
           }
 
+          // Mark success to reset backoff level for this model
+          this.accountManager.markSuccess(accountId, model);
           break; // Success
         } catch (err: unknown) {
           const error = err instanceof Error ? err : new Error(String(err));
@@ -237,18 +246,18 @@ export class ProxyService {
             error.message.includes("RESOURCE_EXHAUSTED")
           ) {
             logger.warn(
-              `Rate limit encountered (stream) for account ${accountId}. Switching account...`
+              `Rate limit encountered (stream) for account ${accountId} on model ${model}. Switching account...`
             );
 
-            // Parse actual retry delay if available, otherwise default to 1 min
-            const retryDelay = parseRetryDelay(error.message) || 60000;
-            this.accountManager.markRateLimited(accountId, retryDelay);
+            // Parse actual retry delay if available, otherwise let markRateLimited use exponential backoff
+            const retryDelay = parseRetryDelay(error.message);
+            this.accountManager.markRateLimited(accountId, retryDelay || 60000, model);
 
-            // Try to get next account
-            accountInfo = await this.accountManager.getAccessToken();
+            // Try to get next account (model-aware)
+            accountInfo = await this.accountManager.getAccessToken("gemini", model);
             if (!accountInfo) {
-              logger.error("No more available accounts after rate limit");
-              throw new Error("No more available accounts after rate limit");
+              logger.error(`No more available accounts for model ${model} after rate limit`);
+              throw new Error(`No more available accounts for model ${model} after rate limit`);
             }
             continue; // Retry with new account
           }

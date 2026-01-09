@@ -23,6 +23,7 @@ import type {
   OpenAITool,
   GeminiRequest,
   GeminiResponse,
+  GeminiCandidate,
   GeminiContent,
   GeminiPart,
   GeminiTool,
@@ -438,12 +439,12 @@ class OpenAIChatResponseTranslator implements ResponseTranslator {
     return results;
   }
 
-  finishStream(options: StreamTranslateOptions): string[] {
+  finishStream(): string[] {
     return ["data: [DONE]\n\n"];
   }
 
   private transformCandidate(
-    candidate: GeminiResponse["candidates"][0],
+    candidate: GeminiCandidate,
     index: number
   ): OpenAIChatChoice {
     const message: OpenAIMessage = {

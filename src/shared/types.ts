@@ -20,6 +20,16 @@ export interface QuotaData {
   subscriptionTier?: string;
 }
 
+/**
+ * Per-model state for tracking rate limits and availability.
+ */
+export interface ModelState {
+  unavailable?: boolean;
+  nextRetryAfter?: number; // Unix timestamp in ms
+  backoffLevel?: number;   // Exponential backoff level for repeated 429s
+  lastError?: string;
+}
+
 export interface Account {
   id: string;
   email: string;
@@ -33,6 +43,12 @@ export interface Account {
   disabled?: boolean;
   disabledReason?: string;
   rateLimitedUntil?: number;
+  /**
+   * Per-model rate limit and availability state.
+   * Key is the model name (e.g., "claude-opus-4-5-thinking").
+   * This allows different models to have independent rate limit cooldowns.
+   */
+  modelStates?: Record<string, ModelState>;
 }
 
 export interface AccountIndex {
