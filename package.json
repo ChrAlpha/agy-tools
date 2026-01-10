@@ -1,0 +1,43 @@
+{
+  "name": "@agy-tools/cli",
+  "version": "0.1.0",
+  "description": "Antigravity account management and Claude API proxy tools.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "agy-tools": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "antigravity",
+    "claude-code",
+    "proxy",
+    "api",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.3",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "conf": "^15",
+    "eventsource-parser": "^3.0.6",
+    "express": "^5.2.1",
+    "open": "^11.0.0",
+    "ora": "^9.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
