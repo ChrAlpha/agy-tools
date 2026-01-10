@@ -6,6 +6,7 @@ Antigravity API 多账户管理与格式转换工具。
 
 - **多账户轮换** - 支持添加多个 Google 账户，自动负载均衡和 Token 刷新
 - **全格式支持** - 同时暴露 OpenAI Chat、OpenAI Responses、Claude Messages 等 API 格式
+- **GPT 模型重定向** - 自动将 GPT 系列模型名映射到 Gemini，Codex 无需修改配置即可使用
 - **Thinking 智能支持** - 完整支持 Claude/Gemini thinking blocks，自动处理签名缓存和多轮对话
 - **模型自动降级** - 当 Pro/Flash 额度用完时，自动切换到 Preview 模型（可配置）
 - **Coding Agent 集成** - 一键启动并自动配置 Claude Code 等开发助手
@@ -45,6 +46,8 @@ agy-tools start
 ```text
 http://127.0.0.1:38080/v1
 ```
+
+> **Codex 用户特别提示**：无需修改模型名称！`agy-tools` 会自动将 `gpt-4o`、`gpt-4`、`gpt-3.5-turbo` 等 GPT 模型名重定向到对应的 Gemini 模型。详见 [GPT 模型重定向](#gpt-模型重定向)。
 
 ---
 

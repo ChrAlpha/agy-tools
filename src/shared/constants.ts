@@ -53,6 +53,154 @@ export const ENDPOINT_PRIORITY: AntigravityEndpoint[] = [
   "prod",            // production last
 ];
 
+// ============================================
+// Model Mapping (GPT → Gemini redirection)
+// ============================================
+
+/**
+ * Model mapping table for GPT series to Gemini series redirection.
+ * Allows Codex and other tools to use GPT model names without modification.
+ */
+const MODEL_MAPPING: Record<string, string> = {
+  // Direct support models (Claude)
+  "claude-opus-4-5-thinking": "claude-opus-4-5-thinking",
+  "claude-sonnet-4-5": "claude-sonnet-4-5",
+  "claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
+
+  // Claude aliases
+  "claude-sonnet-4-5-20250929": "claude-sonnet-4-5-thinking",
+  "claude-3-5-sonnet-20241022": "claude-sonnet-4-5",
+  "claude-3-5-sonnet-20240620": "claude-sonnet-4-5",
+  "claude-opus-4": "claude-opus-4-5-thinking",
+  "claude-opus-4-5-20251101": "claude-opus-4-5-thinking",
+  "claude-haiku-4": "claude-sonnet-4-5",
+  "claude-3-haiku-20240307": "claude-sonnet-4-5",
+  "claude-haiku-4-5-20251001": "claude-sonnet-4-5",
+
+  // OpenAI GPT series → Gemini mapping (key feature for Codex compatibility)
+  "gpt-4": "gemini-2.5-pro",
+  "gpt-4-turbo": "gemini-2.5-pro",
+  "gpt-4-turbo-preview": "gemini-2.5-pro",
+  "gpt-4-0125-preview": "gemini-2.5-pro",
+  "gpt-4-1106-preview": "gemini-2.5-pro",
+  "gpt-4-0613": "gemini-2.5-pro",
+  "gpt-4o": "gemini-2.5-pro",
+  "gpt-4o-2024-05-13": "gemini-2.5-pro",
+  "gpt-4o-2024-08-06": "gemini-2.5-pro",
+  "gpt-4o-mini": "gemini-2.5-flash",
+  "gpt-4o-mini-2024-07-18": "gemini-2.5-flash",
+  "gpt-3.5-turbo": "gemini-2.5-flash",
+  "gpt-3.5-turbo-16k": "gemini-2.5-flash",
+  "gpt-3.5-turbo-0125": "gemini-2.5-flash",
+  "gpt-3.5-turbo-1106": "gemini-2.5-flash",
+  "gpt-3.5-turbo-0613": "gemini-2.5-flash",
+
+  // Gemini protocol mapping (pass-through)
+  "gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
+  "gemini-2.5-flash-thinking": "gemini-2.5-flash-thinking",
+  "gemini-3-pro-low": "gemini-3-pro-low",
+  "gemini-3-pro-high": "gemini-3-pro-high",
+  "gemini-3-pro-preview": "gemini-3-pro-preview",
+  "gemini-3-pro": "gemini-3-pro",
+  "gemini-2.5-flash": "gemini-2.5-flash",
+  "gemini-3-flash": "gemini-3-flash",
+  "gemini-3-pro-image": "gemini-3-pro-image",
+  "gemini-2.0-flash-exp": "gemini-2.0-flash-exp",
+  "gemini-2.5-pro": "gemini-2.5-pro",
+};
+
+/**
+ * Custom model mapping (user-defined, can be extended at runtime)
+ */
+let customModelMapping: Record<string, string> = {};
+
+/**
+ * Set custom model mapping
+ */
+export function setCustomModelMapping(mapping: Record<string, string>): void {
+  customModelMapping = { ...mapping };
+}
+
+/**
+ * Get custom model mapping
+ */
+export function getCustomModelMapping(): Record<string, string> {
+  return { ...customModelMapping };
+}
+
+/**
+ * Wildcard match helper function.
+ * Supports simple * wildcard matching.
+ *
+ * @example
+ * - `gpt-4*` matches `gpt-4`, `gpt-4-turbo`, `gpt-4-0613`, etc.
+ * - `claude-3-5-sonnet-*` matches all 3.5 sonnet versions
+ * - `*-thinking` matches all models ending with `-thinking`
+ */
+function wildcardMatch(pattern: string, text: string): boolean {
+  const starPos = pattern.indexOf("*");
+  if (starPos === -1) {
+    return pattern === text;
+  }
+  const prefix = pattern.slice(0, starPos);
+  const suffix = pattern.slice(starPos + 1);
+  return text.startsWith(prefix) && text.endsWith(suffix);
+}
+
+/**
+ * Map model to target model (internal helper)
+ */
+function mapModelToTarget(input: string): string {
+  // 1. Check exact match in map
+  if (MODEL_MAPPING[input]) {
+    return MODEL_MAPPING[input];
+  }
+
+  // 2. Pass-through known prefixes to support dynamic suffixes
+  if (input.startsWith("gemini-") || input.includes("thinking")) {
+    return input;
+  }
+
+  // 3. Fallback to default (claude-sonnet-4-5)
+  return "claude-sonnet-4-5";
+}
+
+/**
+ * Core model routing engine.
+ * Priority: Exact match > Wildcard match > System default mapping.
+ *
+ * This enables GPT model names to be automatically redirected to Gemini models,
+ * allowing Codex and other tools to work without model name modification.
+ *
+ * @param originalModel Original model name (e.g., "gpt-4o")
+ * @returns Mapped target model name (e.g., "gemini-2.5-pro")
+ *
+ * @example
+ * resolveModelRoute("gpt-4o") // => "gemini-2.5-pro"
+ * resolveModelRoute("gpt-4o-mini") // => "gemini-2.5-flash"
+ * resolveModelRoute("claude-sonnet-4-5") // => "claude-sonnet-4-5"
+ */
+export function resolveModelRoute(originalModel: string): string {
+  // 1. Exact match (highest priority) - check custom mapping first
+  if (customModelMapping[originalModel]) {
+    return customModelMapping[originalModel];
+  }
+
+  // 2. Wildcard match in custom mapping
+  for (const [pattern, target] of Object.entries(customModelMapping)) {
+    if (pattern.includes("*") && wildcardMatch(pattern, originalModel)) {
+      return target;
+    }
+  }
+
+  // 3. System default mapping
+  return mapModelToTarget(originalModel);
+}
+
+// ============================================
+// Headers
+// ============================================
+
 // Headers for Antigravity API
 export const ANTIGRAVITY_HEADERS = {
   "User-Agent": "antigravity/1.11.5 windows/amd64",
@@ -357,7 +505,10 @@ export const MODEL_ALIASES: Record<string, string> = {
 };
 
 export function resolveModelId(modelId: string): string {
-  return MODEL_ALIASES[modelId] ?? modelId;
+  // First apply model routing (GPT → Gemini redirection)
+  const routed = resolveModelRoute(modelId);
+  // Then apply alias resolution
+  return MODEL_ALIASES[routed] ?? routed;
 }
 
 export function getModelInfo(modelId: string): ModelInfo | undefined {
